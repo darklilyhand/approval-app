@@ -57,6 +57,90 @@ const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
 const fmtNum = (n) => Number(n || 0).toLocaleString("ko-KR");
 
+// ─── PDF 출력 ────────────────────────────────────────────────
+function printDoc(doc) {
+  const fields = TEMPLATES[doc.type]?.fields || [];
+  const approvalRows = (doc.approval_line || []).map((u, i) => {
+    const st = doc.approval_status?.[i];
+    return `<tr>
+      <td>${u.name} (${u.title})</td>
+      <td>${st?.status || "대기중"}</td>
+      <td>${st?.comment || "-"}</td>
+      <td>${st?.date ? new Date(st.date).toLocaleDateString("ko-KR") : "-"}</td>
+    </tr>`;
+  }).join("");
+  const fieldRows = fields.map(f => {
+    const val = f.key === "amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR") + "원" : (doc.fields[f.key] || "-");
+    return `<tr><td style="color:#666;width:120px">${f.label}</td><td><strong>${val}</strong></td></tr>`;
+  }).join("");
+  const historyRows = (doc.history || []).map(h =>
+    `<tr><td>${h.user}</td><td>${h.action}</td><td>${h.note || "-"}</td><td>${h.date ? new Date(h.date).toLocaleDateString("ko-KR") : "-"}</td></tr>`
+  ).join("");
+
+  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
+  <title>${doc.title}</title>
+  <style>
+    body { font-family: 'Malgun Gothic', sans-serif; padding: 40px; color: #111; }
+    h1 { font-size: 22px; color: #1e3a5f; border-bottom: 3px solid #1e3a5f; padding-bottom: 10px; }
+    .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
+    .badge { display:inline-block; padding:3px 12px; border-radius:20px; font-weight:700; font-size:13px;
+      background:${ doc.status==="승인"?"#d1fae5":doc.status==="반려"?"#fee2e2":"#dbeafe" };
+      color:${ doc.status==="승인"?"#059669":doc.status==="반려"?"#dc2626":"#3b82f6" }; }
+    h2 { font-size: 15px; color: #374151; margin: 24px 0 10px; border-left: 4px solid #1e3a5f; padding-left: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+    td, th { padding: 8px 12px; border: 1px solid #e5e7eb; }
+    th { background: #f3f4f6; font-weight: 700; text-align: left; }
+    @media print { button { display: none; } }
+  </style></head><body>
+  <h1>📋 ${doc.title}</h1>
+  <div class="meta">
+    문서번호: <strong>${doc.id}</strong> &nbsp;|&nbsp;
+    기안일: <strong>${new Date(doc.created_at).toLocaleDateString("ko-KR")}</strong> &nbsp;|&nbsp;
+    기안자: <strong>${doc.author_name}</strong> (${doc.author_dept} · ${doc.author_title}) &nbsp;|&nbsp;
+    상태: <span class="badge">${doc.status}</span>
+  </div>
+  <h2>📄 기안 내용</h2>
+  <table><tbody>${fieldRows}</tbody></table>
+  <h2>👥 결재라인</h2>
+  <table><thead><tr><th>결재자</th><th>상태</th><th>의견</th><th>처리일</th></tr></thead><tbody>${approvalRows}</tbody></table>
+  <h2>📚 처리 이력</h2>
+  <table><thead><tr><th>처리자</th><th>액션</th><th>비고</th><th>일자</th></tr></thead><tbody>${historyRows}</tbody></table>
+  <script>window.onload = () => window.print();</script>
+  </body></html>`;
+
+  const w = window.open("", "_blank");
+  w.document.write(html);
+  w.document.close();
+}
+
+// ─── 엑셀 내보내기 ───────────────────────────────────────────
+function exportExcel(docs) {
+  const rows = [
+    ["문서번호", "종류", "제목", "기안자", "부서", "직함", "상태", "기안일", "결재라인", "최종처리일"]
+  ];
+  docs.forEach(d => {
+    const line = (d.approval_line || []).map((u, i) => {
+      const st = d.approval_status?.[i];
+      return `${u.name}(${st?.status || "대기중"})`;
+    }).join(" → ");
+    const lastDate = [...(d.history || [])].reverse().find(h => h.action !== "기안 제출")?.date || "";
+    rows.push([
+      d.id, d.type, d.title, d.author_name, d.author_dept, d.author_title,
+      d.status, d.created_at ? new Date(d.created_at).toLocaleDateString("ko-KR") : "",
+      line,
+      lastDate ? new Date(lastDate).toLocaleDateString("ko-KR") : ""
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("
+");
+  const bom = "﻿";
+  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `결재문서_${new Date().toLocaleDateString("ko-KR").replace(/\. /g,"-").replace(".","")}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
 // ─── AI 문서 작성 보조 ────────────────────────────────────────
 async function callClaude(prompt) {
   try {
@@ -423,7 +507,10 @@ function DocList({ docs, title, setSelectedDoc }) {
   const filtered = filter === "전체" ? docs : docs.filter(d => d.status === filter);
   return (
     <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f", marginBottom: 14 }}>{title}</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f" }}>{title}</h2>
+        <button onClick={() => exportExcel(filtered)} style={{ padding: "7px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📊 엑셀 내보내기</button>
+      </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {["전체", "대기중", "진행중", "승인", "반려"].map(s => (
           <button key={s} onClick={() => setFilter(s)} style={{ padding: "5px 12px", borderRadius: 20, fontSize: 12, border: "none", cursor: "pointer", background: filter === s ? "#1e3a5f" : "#e5e7eb", color: filter === s ? "#fff" : "#374151", fontWeight: filter === s ? 700 : 400 }}>{s}</button>
@@ -524,8 +611,9 @@ function DocDetailModal({ doc, profile, onClose, onApprove }) {
             <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f" }}>{doc.title}</div>
             <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>문서번호: {doc.id} · {fmtDate(doc.created_at)}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <span style={{ padding: "4px 12px", borderRadius: 20, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12 }}>{meta.icon} {doc.status}</span>
+            <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
         </div>
