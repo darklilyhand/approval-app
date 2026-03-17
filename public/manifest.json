@@ -1,0 +1,11 @@
+{
+  "short_name": "결재시스템",
+  "name": "내부결재 시스템",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1e3a5f",
+  "background_color": "#f0f4f8",
+  "icons": [
+    { "src": "favicon.ico", "sizes": "64x64", "type": "image/x-icon" }
+  ]
+}
