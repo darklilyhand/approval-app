@@ -417,7 +417,7 @@ function MainApp({ profile, session }) {
         <>
           {mobileMenu && <div onClick={() => setMobileMenu(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 150 }} />}
           <nav style={{
-            width: 220, background: "#1e3a5f", color: "#fff", padding: "16px 0",
+            width: "75vw", maxWidth: 280, background: "#1e3a5f", color: "#fff", padding: "16px 0",
             position: "fixed", top: 56, left: 0, bottom: 0, zIndex: 200,
             transform: mobileMenu ? "translateX(0)" : "translateX(-100%)",
             transition: "transform 0.25s ease",
