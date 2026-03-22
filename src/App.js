@@ -672,6 +672,19 @@ function MainApp({ profile, session }) {
     await supabase.from("documents").delete().eq("id", docId);
   };
 
+  // 열람 권한 체크: 기안자 + 결재라인 + 소장(level5)
+  const canViewDoc = (doc) => {
+    if (!doc.is_secret) return true;
+    if (doc.author_id === profile.id) return true;
+    if (profile.level >= 5) return true;
+    if ((doc.approval_line || []).some(u => u.id === profile.id)) return true;
+    return false;
+  };
+
+  const toggleSecret = async (docId, isSecret) => {
+    await supabase.from("documents").update({ is_secret: isSecret }).eq("id", docId);
+  };
+
   const logout = async () => { await supabase.auth.signOut(); };
 
   const stats = {
@@ -747,17 +760,17 @@ function MainApp({ profile, session }) {
             <div style={{ textAlign: "center", padding: 60, color: "#9ca3af" }}>📡 데이터 불러오는 중...</div>
           ) : (
             <>
-              {tab === "dashboard" && <Dashboard stats={stats} docs={docs} setSelectedDoc={setSelectedDoc} setTab={setTab} />}
-              {tab === "myDocs" && <DocList docs={docs.filter(d => d.author_id === profile.id)} title="내 문서함" setSelectedDoc={setSelectedDoc} />}
-              {tab === "pending" && <PendingList docs={docs} profile={profile} onApprove={approveDoc} setSelectedDoc={setSelectedDoc} />}
-              {tab === "history" && <DocList docs={docs} title="전체 문서 이력" setSelectedDoc={setSelectedDoc} />}
+              {tab === "dashboard" && <Dashboard stats={stats} docs={docs} setSelectedDoc={setSelectedDoc} setTab={setTab} canViewDoc={canViewDoc} />}
+              {tab === "myDocs" && <DocList docs={docs.filter(d => d.author_id === profile.id)} title="내 문서함" setSelectedDoc={setSelectedDoc} canViewDoc={canViewDoc} />}
+              {tab === "pending" && <PendingList docs={docs} profile={profile} onApprove={approveDoc} setSelectedDoc={setSelectedDoc} canViewDoc={canViewDoc} />}
+              {tab === "history" && <DocList docs={docs} title="전체 문서 이력" setSelectedDoc={setSelectedDoc} canViewDoc={canViewDoc} />}
             </>
           )}
         </main>
       </div>
 
       {/* 모달들 */}
-      {selectedDoc && <DocDetailModal doc={selectedDoc} profile={profile} onClose={() => setSelectedDoc(null)} onApprove={approveDoc} onRecall={recallDoc} onDelete={deleteDoc} />}
+      {selectedDoc && <DocDetailModal doc={selectedDoc} profile={profile} onClose={() => setSelectedDoc(null)} onApprove={approveDoc} onRecall={recallDoc} onDelete={deleteDoc} onToggleSecret={toggleSecret} canView={canViewDoc(selectedDoc)} />}
       {newDocModal && <NewDocModal onClose={() => setNewDocModal(false)} onSubmit={addDoc} profile={profile} allProfiles={profiles} />}
     </div>
   );
@@ -789,7 +802,7 @@ function Dashboard({ stats, docs, setSelectedDoc, setTab }) {
           <h3 style={{ fontSize: 14, fontWeight: 700, color: "#2a7a8c" }}>최근 문서</h3>
           <button onClick={() => setTab("history")} style={{ fontSize: 12, color: "#3b82f6", background: "none", border: "none", cursor: "pointer" }}>전체보기 →</button>
         </div>
-        {docs.slice(0, 5).map(d => <DocRow key={d.id} doc={d} onClick={() => setSelectedDoc(d)} />)}
+        {docs.slice(0, 5).map(d => <DocRow key={d.id} doc={d} onClick={() => setSelectedDoc(d)} canView={canViewDoc ? canViewDoc(d) : true} />)}
         {docs.length === 0 && <EmptyState msg="문서가 없습니다." />}
       </div>
     </div>
@@ -832,7 +845,7 @@ function PendingList({ docs, profile, onApprove, setSelectedDoc }) {
       <h2 style={{ fontSize: 18, fontWeight: 700, color: "#2a7a8c", marginBottom: 14 }}>⏳ 결재 대기함 ({pending.length})</h2>
       <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
         {pending.map((d, i) => (
-          <DocRow key={d.id} doc={d} onClick={() => setSelectedDoc(d)} noBorder={i === pending.length - 1}
+          <DocRow key={d.id} doc={d} onClick={() => setSelectedDoc(d)} noBorder={i === pending.length - 1} canView={true}
             showActions onAction={(action, comment) => {
               const idx = d.approval_line.findIndex(u => u.id === profile.id);
               onApprove(d.id, idx, action, comment);
@@ -845,11 +858,13 @@ function PendingList({ docs, profile, onApprove, setSelectedDoc }) {
 }
 
 // ─── 문서 행 ─────────────────────────────────────────────────
-function DocRow({ doc, onClick, noBorder, showActions, onAction }) {
+function DocRow({ doc, onClick, noBorder, showActions, onAction, canView }) {
   const [comment, setComment] = useState("");
   const [showComment, setShowComment] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const meta = STATUS_META[doc.status] || STATUS_META["대기중"];
+  const isSecret = !!doc.is_secret;
+  const viewable = canView !== false;
 
   const handleAction = (action) => {
     if (!showComment) { setPendingAction(action); setShowComment(true); return; }
@@ -857,16 +872,24 @@ function DocRow({ doc, onClick, noBorder, showActions, onAction }) {
     setShowComment(false); setComment(""); setPendingAction(null);
   };
 
+  const handleClick = () => {
+    if (!viewable) { alert("열람 권한이 없는 비밀문서입니다."); return; }
+    onClick();
+  };
+
   return (
     <div style={{ borderBottom: noBorder ? "none" : "1px solid #f3f4f6" }}>
-      <div onClick={onClick} style={{ display: "flex", alignItems: "center", padding: "13px 16px", cursor: "pointer", gap: 10 }}
-        onMouseEnter={e => e.currentTarget.style.background = "#f9fafb"}
+      <div onClick={handleClick} style={{ display: "flex", alignItems: "center", padding: "13px 16px", cursor: viewable ? "pointer" : "not-allowed", gap: 10, opacity: viewable ? 1 : 0.6 }}
+        onMouseEnter={e => { if(viewable) e.currentTarget.style.background = "#f9fafb"; }}
         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
         <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 20, background: meta.bg, color: meta.color, fontWeight: 700, whiteSpace: "nowrap" }}>
           {meta.icon} {doc.status}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.title}</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {isSecret && <span style={{ fontSize: 11, background: "#fee2e2", color: "#dc2626", borderRadius: 4, padding: "1px 5px", marginRight: 5, fontWeight: 700 }}>🔒 비밀</span>}
+            {viewable ? doc.title : doc.title.replace(/\[.*?\]\s*/, "[비밀문서] ●●●")}
+          </div>
           <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{doc.author_name} · {fmtDate(doc.created_at)}</div>
         </div>
         {showActions && (
@@ -888,7 +911,7 @@ function DocRow({ doc, onClick, noBorder, showActions, onAction }) {
 }
 
 // ─── 문서 상세 모달 ───────────────────────────────────────────
-function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }) {
+function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete, onToggleSecret, canView }) {
   const [commentMap, setCommentMap] = useState({});
   const [showOrgModal, setShowOrgModal] = useState(false);
   const meta = STATUS_META[doc.status] || STATUS_META["대기중"];
@@ -905,11 +928,19 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }
         {/* 헤더 */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f" }}>{doc.title}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f" }}>
+              {doc.is_secret && <span style={{ fontSize: 12, background: "#fee2e2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginRight: 6, fontWeight: 700 }}>🔒 비밀</span>}
+              {doc.title}
+            </div>
             <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>문서번호: {doc.id} · {fmtDate(doc.created_at)}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <span style={{ padding: "4px 12px", borderRadius: 20, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12 }}>{meta.icon} {doc.status}</span>
+            {doc.author_id === profile.id && (
+              <button onClick={() => onToggleSecret(doc.id, !doc.is_secret)} style={{ padding: "5px 10px", background: doc.is_secret ? "#fee2e2" : "#f3f4f6", color: doc.is_secret ? "#dc2626" : "#6b7280", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                {doc.is_secret ? "🔒 비밀해제" : "🔓 비밀설정"}
+              </button>
+            )}
             {doc.author_id === profile.id && doc.status !== "승인" && doc.status !== "회수" && (
               <button onClick={() => {
                 if (window.confirm("기안을 회수하시겠어요?\n진행 중인 결재가 초기화됩니다.")) { onRecall(doc.id); onClose(); }
@@ -926,6 +957,13 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }
           </div>
         </div>
 
+        {!canView ? (
+          <div style={{ padding: 40, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#dc2626", marginBottom: 8 }}>비밀문서</div>
+            <div style={{ fontSize: 14, color: "#6b7280" }}>열람 권한이 없는 문서입니다.</div>
+          </div>
+        ) : (
         <div style={{ padding: 20 }}>
           {/* 기안 내용 */}
           <div style={{ background: "#f9fafb", borderRadius: 12, padding: 16, marginBottom: 16 }}>
@@ -1008,6 +1046,7 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }
             {(!doc.history || doc.history.length === 0) && <div style={{ color: "#9ca3af", fontSize: 13 }}>이력 없음</div>}
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -1091,29 +1130,30 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+    // input 초기화 (같은 파일 재업로드 가능하게)
+    e.target.value = "";
     setUploading(true);
     const uploaded = [];
-    for (const file of files) {
-      // 먼저 Supabase Storage 시도, 실패하면 URL.createObjectURL 사용
-      try {
-        const ext = file.name.split(".").pop();
-        const path = `attachments/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const { error } = await supabase.storage.from("documents").upload(path, file);
-        if (!error) {
-          const { data } = supabase.storage.from("documents").getPublicUrl(path);
-          uploaded.push({ name: file.name, url: data.publicUrl, size: file.size });
-        } else {
-          // Storage 없으면 로컬 URL 사용 (임시)
-          const url = URL.createObjectURL(file);
-          uploaded.push({ name: file.name, url, size: file.size, local: true });
+    try {
+      for (const file of files) {
+        try {
+          const ext = file.name.split(".").pop();
+          const path = "attachments/" + Date.now() + "_" + Math.random().toString(36).slice(2) + "." + ext;
+          const { error } = await supabase.storage.from("documents").upload(path, file);
+          if (!error) {
+            const { data } = supabase.storage.from("documents").getPublicUrl(path);
+            uploaded.push({ name: file.name, url: data.publicUrl, size: file.size });
+          } else {
+            uploaded.push({ name: file.name, url: "", size: file.size, local: true });
+          }
+        } catch {
+          uploaded.push({ name: file.name, url: "", size: file.size, local: true });
         }
-      } catch {
-        const url = URL.createObjectURL(file);
-        uploaded.push({ name: file.name, url, size: file.size, local: true });
       }
+      setAttachments(prev => [...prev, ...uploaded]);
+    } finally {
+      setUploading(false);
     }
-    setAttachments(prev => [...prev, ...uploaded]);
-    setUploading(false);
   };
 
   const removeAttachment = (idx) => setAttachments(prev => prev.filter((_, i) => i !== idx));
