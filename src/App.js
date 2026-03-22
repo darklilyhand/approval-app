@@ -40,8 +40,8 @@ const TEMPLATES = {
   },
   공문서: {
     fields: [
-      { key: "receiver", label: "수신", type: "text", placeholder: "예: 한국사립박물관협회장" },
-      { key: "reference", label: "참조", type: "text", placeholder: "예: 사업 담당자" },
+      { key: "receiver", label: "수신", type: "text", placeholder: "예: 묘한 LAB 소장" },
+      { key: "reference", label: "참조", type: "text", placeholder: "예: 묘한박물관 학예사" },
       { key: "subject", label: "제목", type: "text" },
       { key: "body", label: "본문 내용", type: "textarea" },
       { key: "attachments", label: "붙임", type: "textarea", placeholder: "예: 붙임 1. 서류전형 평정표" },
@@ -333,29 +333,39 @@ function printDoc(doc) {
 
 // ─── 엑셀 내보내기 ───────────────────────────────────────────
 function exportExcel(docs) {
-  const rows = [
-    ["문서번호", "종류", "제목", "기안자", "부서", "직함", "상태", "기안일", "결재라인", "최종처리일"]
-  ];
-  docs.forEach(d => {
+  const headers = ["문서번호", "종류", "제목", "기안자", "부서", "직함", "상태", "기안일", "결재라인", "최종처리일"];
+  const dataRows = docs.map(d => {
     const line = (d.approval_line || []).map((u, i) => {
       const st = d.approval_status?.[i];
-      return `${u.name}(${st?.status || "대기중"})`;
-    }).join(" → ");
+      return u.name + "(" + (st?.status || "대기중") + ")";
+    }).join(" -> ");
     const lastDate = [...(d.history || [])].reverse().find(h => h.action !== "기안 제출")?.date || "";
-    rows.push([
+    return [
       d.id, d.type, d.title, d.author_name, d.author_dept, d.author_title,
-      d.status, d.created_at ? new Date(d.created_at).toLocaleDateString("ko-KR") : "",
+      d.status,
+      d.created_at ? new Date(d.created_at).toLocaleDateString("ko-KR") : "",
       line,
       lastDate ? new Date(lastDate).toLocaleDateString("ko-KR") : ""
-    ]);
+    ];
   });
-  const csv = rows.map(r => r.map(c => `"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
-  const bom = "﻿";
+
+  const escape = (v) => {
+    const s = String(v || "").replace(/,/g, " ").replace(/\n/g, " ");
+    return s;
+  };
+  const csvRows = [headers, ...dataRows].map(r => r.map(escape).join(","));
+  const csv = csvRows.join("\n");
+  const bom = "\uFEFF";
   const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `결재문서_${new Date().toLocaleDateString("ko-KR").replace(/\. /g,"-").replace(".","")}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+  a.href = url;
+  const dateStr = new Date().toLocaleDateString("ko-KR").replace(/\. /g, "-").replace(".", "");
+  a.download = "결재문서_" + dateStr + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─── 워드 파일 파싱 (mammoth 사용) ──────────────────────────────
@@ -760,12 +770,14 @@ function Dashboard({ stats, docs, setSelectedDoc, setTab }) {
       <h2 style={{ fontSize: 18, fontWeight: 700, color: "#2a7a8c", marginBottom: 16 }}>📊 대시보드</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "전체 문서", value: stats.total, icon: "📋", color: "#3ba8b8", bg: "#e8f7f9" },
-          { label: "결재 대기", value: stats.pending, icon: "⏳", color: "#5b9fd4", bg: "#e8f2fb" },
-          { label: "승인 완료", value: stats.approved, icon: "✅", color: "#4db8a8", bg: "#e6f7f5" },
-          { label: "반려", value: stats.rejected, icon: "❌", color: "#7a9ebe", bg: "#edf3f8" },
+          { label: "전체 문서", value: stats.total, icon: "📋", color: "#3ba8b8", bg: "#e8f7f9", tab: "history" },
+          { label: "결재 대기", value: stats.pending, icon: "⏳", color: "#5b9fd4", bg: "#e8f2fb", tab: "pending" },
+          { label: "승인 완료", value: stats.approved, icon: "✅", color: "#4db8a8", bg: "#e6f7f5", tab: "myDocs" },
+          { label: "반려", value: stats.rejected, icon: "❌", color: "#7a9ebe", bg: "#edf3f8", tab: "myDocs" },
         ].map(s => (
-          <div key={s.label} style={{ background: s.bg || "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: `4px solid ${s.color}` }}>
+          <div key={s.label} onClick={() => setTab(s.tab)} style={{ background: s.bg || "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: `4px solid ${s.color}`, cursor: "pointer", transition: "transform 0.1s, box-shadow 0.1s" }}
+            onMouseEnter={e => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.12)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.06)"; }}>
             <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: 12, color: "#6b7280" }}>{s.label}</div>
@@ -1082,12 +1094,22 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
     setUploading(true);
     const uploaded = [];
     for (const file of files) {
-      const ext = file.name.split(".").pop();
-      const path = `attachments/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("documents").upload(path, file);
-      if (!error) {
-        const { data } = supabase.storage.from("documents").getPublicUrl(path);
-        uploaded.push({ name: file.name, url: data.publicUrl, size: file.size });
+      // 먼저 Supabase Storage 시도, 실패하면 URL.createObjectURL 사용
+      try {
+        const ext = file.name.split(".").pop();
+        const path = `attachments/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error } = await supabase.storage.from("documents").upload(path, file);
+        if (!error) {
+          const { data } = supabase.storage.from("documents").getPublicUrl(path);
+          uploaded.push({ name: file.name, url: data.publicUrl, size: file.size });
+        } else {
+          // Storage 없으면 로컬 URL 사용 (임시)
+          const url = URL.createObjectURL(file);
+          uploaded.push({ name: file.name, url, size: file.size, local: true });
+        }
+      } catch {
+        const url = URL.createObjectURL(file);
+        uploaded.push({ name: file.name, url, size: file.size, local: true });
       }
     }
     setAttachments(prev => [...prev, ...uploaded]);
@@ -1219,20 +1241,26 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
                 </div>
               ))}
               {/* 첨부파일 업로드 */}
-              <div style={{ marginTop: 14, background: "#f8fafc", borderRadius: 10, padding: 14, border: "1.5px dashed #b0d8e0" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#2a7a8c", marginBottom: 8 }}>📎 첨부파일</div>
-                <label style={{ display: "inline-block", padding: "7px 14px", background: "#2a7a8c", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                  {uploading ? "⏳ 업로드 중..." : "+ 파일 추가"}
-                  <input type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
-                </label>
+              <div style={{ marginTop: 14, background: "#e8f7f9", borderRadius: 10, padding: 14, border: "2px dashed #3ba8b8" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#2a7a8c" }}>📎 첨부파일</div>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "#2a7a8c", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                    {uploading ? "⏳ 업로드 중..." : "＋ 파일 추가"}
+                    <input type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
+                  </label>
+                </div>
+                <div style={{ fontSize: 12, color: "#5b9fd4", marginBottom: 6 }}>모든 파일 형식 가능 (이미지, PDF, 엑셀, 워드 등)</div>
+                {attachments.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "10px 0", color: "#9ca3af", fontSize: 12 }}>첨부파일이 없어요</div>
+                )}
                 {attachments.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
                     {attachments.map((f, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", borderRadius: 6, padding: "6px 10px", border: "1px solid #e5e7eb" }}>
-                        <span style={{ fontSize: 14 }}>📄</span>
-                        <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#2a7a8c", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</a>
-                        <span style={{ fontSize: 11, color: "#9ca3af" }}>{(f.size/1024).toFixed(0)}KB</span>
-                        <button onClick={() => removeAttachment(i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", borderRadius: 6, padding: "7px 10px", border: "1px solid #b0d8e0" }}>
+                        <span style={{ fontSize: 16 }}>📄</span>
+                        <span style={{ fontSize: 12, color: "#2a7a8c", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                        <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>{(f.size/1024).toFixed(0)}KB</span>
+                        <button onClick={() => removeAttachment(i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, padding: 0, flexShrink: 0 }}>×</button>
                       </div>
                     ))}
                   </div>
@@ -1240,7 +1268,7 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <button onClick={() => setStep(1)} style={{ flex: 1, padding: 12, background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>← 이전</button>
-                <button onClick={() => setStep(3)} style={{ flex: 2, padding: 12, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
+                <button onClick={() => setStep(3)} style={{ flex: 2, padding: 12, background: "#3ba8b8", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
               </div>
             </div>
           )}
