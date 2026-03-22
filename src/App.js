@@ -787,7 +787,7 @@ function MainApp({ profile, session }) {
 }
 
 // ─── 대시보드 ─────────────────────────────────────────────────
-function Dashboard({ stats, docs, setSelectedDoc, setTab }) {
+function Dashboard({ stats, docs, setSelectedDoc, setTab, canViewDoc }) {
   return (
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 700, color: "#2a7a8c", marginBottom: 16 }}>📊 대시보드</h2>
@@ -843,7 +843,7 @@ function DocList({ docs, title, setSelectedDoc }) {
 }
 
 // ─── 결재 대기함 ─────────────────────────────────────────────
-function PendingList({ docs, profile, onApprove, setSelectedDoc }) {
+function PendingList({ docs, profile, onApprove, setSelectedDoc, canViewDoc }) {
   const pending = docs.filter(d => {
     const myIdx = d.approval_line?.findIndex(u => u.id === profile.id);
     if (myIdx < 0 || myIdx === undefined) return false;
