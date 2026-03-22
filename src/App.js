@@ -67,6 +67,72 @@ const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
 const fmtNum = (n) => Number(n || 0).toLocaleString("ko-KR");
 
+// ─── 워드(.docx) 내보내기 ───────────────────────────────────────
+function exportDocToWord(doc) {
+  const fields = TEMPLATES[doc.type]?.fields || [];
+  const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
+
+  // 결재판 행 생성
+  const stampHeader = ROLES.map(r => `<td style="border:1px solid #2a7a8c;padding:6px;text-align:center;background:#e2f4f7;font-weight:bold;font-size:11px;width:60px">${r}</td>`).join("");
+  const stampBody = ROLES.map(role => {
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role || u.title.includes(role));
+    if (idx < 0) return `<td style="border:1px solid #2a7a8c;padding:10px 6px;text-align:center;color:#ccc">-</td>`;
+    const st = (doc.approval_status||[])[idx];
+    const name = doc.approval_line[idx].name;
+    const date = st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}).replace(". ","/").replace(".","") : "";
+    return `<td style="border:1px solid #2a7a8c;padding:8px 4px;text-align:center"><div style="font-weight:bold">${name}</div>${date ? `<div style="font-size:10px;color:#666;margin-top:2px">${date}</div>` : ""}</td>`;
+  }).join("");
+
+  // 문서 종류별 본문
+  let bodyHtml = "";
+  if (doc.type === "공문서") {
+    bodyHtml = `
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+        <tr><td style="padding:6px 12px;border:1px solid #ccc;width:80px;background:#f0f7f9;font-weight:bold">수신</td><td style="padding:6px 12px;border:1px solid #ccc">${doc.fields.receiver||""}</td></tr>
+        <tr><td style="padding:6px 12px;border:1px solid #ccc;background:#f0f7f9;font-weight:bold">참조</td><td style="padding:6px 12px;border:1px solid #ccc">${doc.fields.reference||""}</td></tr>
+        <tr><td style="padding:6px 12px;border:1px solid #ccc;background:#f0f7f9;font-weight:bold">제목</td><td style="padding:6px 12px;border:1px solid #ccc;font-weight:bold">${doc.fields.subject||""}</td></tr>
+      </table>
+      <div style="line-height:1.8;margin-bottom:20px;white-space:pre-wrap">${doc.fields.body||""}</div>
+      ${doc.fields.attachments ? `<div style="margin-top:16px;padding:12px;background:#f9fafb;border-left:3px solid #3ba8b8"><strong>붙임</strong><br/><pre style="margin:6px 0;font-family:inherit">${doc.fields.attachments}</pre></div>` : ""}
+    `;
+  } else {
+    bodyHtml = fields.map(f => `
+      <tr>
+        <td style="padding:8px 12px;border:1px solid #ccc;width:120px;background:#f0f7f9;font-weight:bold">${f.label}</td>
+        <td style="padding:8px 12px;border:1px solid #ccc">${f.key==="amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR")+"원" : (doc.fields[f.key]||"-")}</td>
+      </tr>`).join("");
+    bodyHtml = `<table style="width:100%;border-collapse:collapse;margin-bottom:20px"><tbody>${bodyHtml}</tbody></table>`;
+  }
+
+  const html = `<!DOCTYPE html><html lang="ko">
+<head><meta charset="utf-8"/>
+<style>
+  body { font-family: 'Malgun Gothic', sans-serif; padding: 40px; font-size: 13px; }
+  h1 { font-size: 18px; text-align: center; margin-bottom: 6px; }
+  .meta { text-align:center; color:#666; font-size:12px; margin-bottom:24px; }
+  h2 { font-size: 13px; font-weight:bold; margin: 20px 0 8px; color:#2a7a8c; border-bottom:1px solid #3ba8b8; padding-bottom:4px; }
+  table { width:100%; border-collapse:collapse; }
+  @media print { button { display:none } }
+</style>
+</head><body>
+<h1>${doc.type}</h1>
+<div class="meta">문서번호: ${doc.id} | 기안일: ${new Date(doc.created_at).toLocaleDateString("ko-KR")} | 기안자: ${doc.author_name} (${doc.author_dept})</div>
+<h2>🔖 결재</h2>
+<table><tr>${stampHeader}</tr><tr>${stampBody}</tr></table>
+<h2>📄 내용</h2>
+${bodyHtml}
+<script>window.onload=()=>{ window.document.execCommand('SaveAs', true, '${doc.id}_${doc.type}.doc'); }</script>
+</body></html>`;
+
+  const blob = new Blob(["﻿" + html], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${doc.id}_${doc.type}.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── PDF 출력 ────────────────────────────────────────────────
 function printDoc(doc) {
   const fields = TEMPLATES[doc.type]?.fields || [];
@@ -463,6 +529,10 @@ function MainApp({ profile, session }) {
     await supabase.from("documents").update({ status: newStatus, approval_status: newApprovalStatus, history: newHistory }).eq("id", docId);
   };
 
+  const deleteDoc = async (docId) => {
+    await supabase.from("documents").delete().eq("id", docId);
+  };
+
   const logout = async () => { await supabase.auth.signOut(); };
 
   const stats = {
@@ -548,7 +618,7 @@ function MainApp({ profile, session }) {
       </div>
 
       {/* 모달들 */}
-      {selectedDoc && <DocDetailModal doc={selectedDoc} profile={profile} onClose={() => setSelectedDoc(null)} onApprove={approveDoc} onRecall={recallDoc} />}
+      {selectedDoc && <DocDetailModal doc={selectedDoc} profile={profile} onClose={() => setSelectedDoc(null)} onApprove={approveDoc} onRecall={recallDoc} onDelete={deleteDoc} />}
       {newDocModal && <NewDocModal onClose={() => setNewDocModal(false)} onSubmit={addDoc} profile={profile} allProfiles={profiles} />}
     </div>
   );
@@ -677,7 +747,7 @@ function DocRow({ doc, onClick, noBorder, showActions, onAction }) {
 }
 
 // ─── 문서 상세 모달 ───────────────────────────────────────────
-function DocDetailModal({ doc, profile, onClose, onApprove, onRecall }) {
+function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }) {
   const [commentMap, setCommentMap] = useState({});
   const meta = STATUS_META[doc.status] || STATUS_META["대기중"];
 
@@ -699,10 +769,16 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall }) {
             <span style={{ padding: "4px 12px", borderRadius: 20, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12 }}>{meta.icon} {doc.status}</span>
             {doc.author_id === profile.id && doc.status !== "승인" && doc.status !== "회수" && (
               <button onClick={() => {
-                if (window.confirm("기안을 회수하시겠어요? 진행 중인 결재가 초기화됩니다.")) { onRecall(doc.id); onClose(); }
-              }} style={{ padding: "5px 10px", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↩️ 회수</button>
+                if (window.confirm("기안을 회수하시겠어요?\n진행 중인 결재가 초기화됩니다.")) { onRecall(doc.id); onClose(); }
+              }} style={{ padding: "5px 10px", background: "#5b9fd4", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↩️ 회수</button>
             )}
-            <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
+            {doc.author_id === profile.id && (doc.status === "회수" || doc.status === "반려") && (
+              <button onClick={() => {
+                if (window.confirm("이 문서를 삭제하시겠어요?\n삭제 후 복구할 수 없습니다.")) { onDelete(doc.id); onClose(); }
+              }} style={{ padding: "5px 10px", background: "#7a9ebe", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ 삭제</button>
+            )}
+            <button onClick={() => exportDocToWord(doc)} style={{ padding: "5px 10px", background: "#4db8a8", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📄 워드</button>
+            <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#2a7a8c", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
         </div>
