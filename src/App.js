@@ -707,7 +707,7 @@ function MainApp({ profile, session }) {
       <header style={{ background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 2px 8px rgba(0,0,0,0.2)", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => setMobileMenu(!mobileMenu)} style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer", display: "block", padding: "4px 8px" }}>☰</button>
-          <span style={{ fontSize: 18, fontWeight: 800 }}>📋 결재시스템</span>
+          <span onClick={() => { setTab("dashboard"); setMobileMenu(false); }} style={{ fontSize: 18, fontWeight: 800, cursor: "pointer" }}>📋 결재시스템</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => setNewDocModal(true)} style={{ padding: "7px 14px", background: "rgba(255,255,255,0.25)", color: "#fff", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 20, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>✏️ 기안</button>
@@ -1199,7 +1199,7 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1000 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1000 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 600, maxHeight: "92vh", overflow: "auto" }}>
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 0" }}>
           <div style={{ width: 40, height: 4, borderRadius: 2, background: "#e5e7eb" }} />
@@ -1241,11 +1241,17 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
                   <input type="file" accept=".docx" style={{ display: "none" }} onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    e.target.value = "";
                     setWordLoading(true);
-                    const result = await parseWordToFields(file, docType);
-                    if (result) { setFields(result); setStep(2); }
-                    else alert("파일 분석에 실패했어요. 다시 시도해주세요.");
-                    setWordLoading(false);
+                    try {
+                      const result = await parseWordToFields(file, docType);
+                      if (result) { setFields(result); setStep(2); }
+                      else alert("파일 분석에 실패했어요. 다시 시도해주세요.");
+                    } catch {
+                      alert("파일을 읽는 중 오류가 발생했어요.");
+                    } finally {
+                      setWordLoading(false);
+                    }
                   }} />
                 </label>
               </div>
