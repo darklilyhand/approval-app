@@ -1340,8 +1340,7 @@ function exportExpenseToWord(doc) {
   if (w) { w.document.write(html); w.document.close(); }
 }
 
-// ─── 기관명 선택 모달
- ────────────────────────────────────────────
+// ─── 기관명 선택 모달 ────────────────────────────────────────────
 function OrgSelectModal({ doc, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}
