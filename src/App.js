@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, BorderStyle, ShadingType, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
+import mammoth from "mammoth";
 import { supabase } from "./supabaseClient";
 
 // ─── 상수 ────────────────────────────────────────────────────
@@ -368,39 +369,26 @@ function exportExcel(docs) {
   URL.revokeObjectURL(url);
 }
 
-// ─── 워드 파일 파싱 (mammoth - API 없이 직접 텍스트 추출) ──────────
+// ─── 워드 파일 파싱 (mammoth npm 패키지) ────────────────────────
 async function parseWordToFields(file, docType) {
   try {
-    // mammoth CDN으로 docx 텍스트 추출
-    const mammoth = window._mammoth || await new Promise((resolve, reject) => {
-      if (window.mammoth) { resolve(window.mammoth); return; }
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
-      script.onload = () => resolve(window.mammoth);
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer });
     const text = result.value || "";
     const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
-    // 문서 종류별 파싱
     if (docType === "공문서") {
-      const getValue = (keyword) => {
-        const line = lines.find(l => l.startsWith(keyword));
-        return line ? line.replace(keyword, "").replace(/^[\s:：]+/, "").trim() : "";
-      };
-      const receiverLine = lines.find(l => /^수\s*신/.test(l)) || "";
-      const referenceLine = lines.find(l => /^참\s*조/.test(l)) || "";
-      const subjectLine = lines.find(l => /^제\s*목/.test(l)) || "";
-      const receiverIdx = lines.indexOf(receiverLine);
+      const findLine = (regex) => (lines.find(l => regex.test(l)) || "");
+      const receiverLine = findLine(/^수\s*신/);
+      const referenceLine = findLine(/^참\s*조/);
+      const subjectLine = findLine(/^제\s*목/);
       const subjectIdx = lines.indexOf(subjectLine);
       const bodyLines = subjectIdx >= 0
-        ? lines.slice(subjectIdx + 1).filter(l => !/^붙\s*임/.test(l) && !/^\d{4}년/.test(l) && !/시행/.test(l) && !/주소/.test(l))
+        ? lines.slice(subjectIdx + 1).filter(l =>
+            !/^붙\s*임/.test(l) && !/^\d{4}년/.test(l) &&
+            !/시행/.test(l) && !/주소/.test(l) && !/전화/.test(l))
         : [];
-      const attachLine = lines.find(l => /^붙\s*임/.test(l)) || "";
+      const attachLine = findLine(/^붙\s*임/);
       return {
         receiver: receiverLine.replace(/^수\s*신\s*[:：]?\s*/, "").trim(),
         reference: referenceLine.replace(/^참\s*조\s*[:：]?\s*/, "").trim(),
@@ -410,14 +398,13 @@ async function parseWordToFields(file, docType) {
       };
     } else if (docType === "지출결의서") {
       return {
-        purpose: lines.find(l => /목적|용도|내용/.test(l)) || lines[0] || "",
-        amount: (lines.find(l => /원|금액|비용/.test(l)) || "").replace(/[^0-9]/g, "") || "",
-        date: (lines.find(l => /\d{4}[.\-년]\d{1,2}[.\-월]\d{1,2}/.test(l)) || "").match(/\d{4}[.\-년]\d{1,2}[.\-월]\d{1,2}/)?.[0]?.replace(/[년월]/g, "-").replace(/일/, "").trim() || "",
-        vendor: lines.find(l => /거래처|업체|상호/.test(l)) || "",
+        purpose: lines[0] || "",
+        amount: (lines.find(l => /[0-9,]+원/.test(l)) || "").replace(/[^0-9]/g, "") || "",
+        date: "",
+        vendor: lines.find(l => /거래처|업체|상호/.test(l))?.replace(/.*[:：]\s*/, "") || "",
         detail: lines.slice(0, 5).join(" "),
       };
     } else {
-      // 자유양식/기타
       return {
         subject: lines[0] || "",
         content: lines.slice(1, 10).join("\n"),
