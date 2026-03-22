@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, BorderStyle, ShadingType, HeadingLevel } from "docx";
+import { saveAs } from "file-saver";
 import { supabase } from "./supabaseClient";
 
 // ─── 상수 ────────────────────────────────────────────────────
@@ -67,112 +69,164 @@ const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
 const fmtNum = (n) => Number(n || 0).toLocaleString("ko-KR");
 
-// ─── 워드 문서 보기/저장 ────────────────────────────────────────
-function exportDocToWord(doc) {
+// ─── 진짜 .docx 생성 ────────────────────────────────────────────
+async function exportDocToWord(doc) {
   const fields = TEMPLATES[doc.type]?.fields || [];
   const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
 
+  // 색상 상수
+  const TEAL = "2A7A8C";
+  const TEAL_LIGHT = "E2F4F7";
+  const BORDER = { style: BorderStyle.SINGLE, size: 6, color: "B0D8E0" };
+
+  // 헤더 셀 생성 함수
+  const makeHeaderCell = (text) => new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text, bold: true, color: "FFFFFF", size: 20 })], alignment: AlignmentType.CENTER })],
+    shading: { type: ShadingType.CLEAR, fill: TEAL },
+    borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+    width: { size: 16, type: WidthType.PERCENTAGE },
+  });
+
+  // 결재판 데이터
   const stamps = ROLES.map(role => {
     const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
-    if (idx < 0) return { role, name: "", date: "", status: "" };
+    if (idx < 0) return { role, name: "", date: "" };
     const st = (doc.approval_status||[])[idx];
     return {
       role,
       name: doc.approval_line[idx].name,
-      date: st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}) : "",
-      status: st?.status || "대기중"
+      date: st?.date ? new Date(st.date).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" }) : "",
     };
   });
 
-  const stampHeaderCells = stamps.map(s =>
-    `<td style="border:1px solid #2a7a8c;padding:5px 3px;text-align:center;background:#2a7a8c;color:white;font-size:11px;font-weight:bold;min-width:55px">${s.role}</td>`
-  ).join("");
+  // 결재판 테이블
+  const stampTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        children: stamps.map(s => makeHeaderCell(s.role))
+      }),
+      new TableRow({
+        children: stamps.map(s => new TableCell({
+          children: [
+            new Paragraph({ children: [new TextRun({ text: s.name || "", bold: !!s.name, size: 22 })], alignment: AlignmentType.CENTER }),
+            new Paragraph({ children: [new TextRun({ text: s.date || (s.name ? "미결재" : ""), size: 16, color: s.date ? "444444" : "AAAAAA" })], alignment: AlignmentType.CENTER }),
+          ],
+          borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+          width: { size: 16, type: WidthType.PERCENTAGE },
+        }))
+      }),
+    ],
+  });
 
-  const stampBodyCells = stamps.map(s =>
-    `<td style="border:1px solid #2a7a8c;padding:10px 3px;text-align:center;height:50px;vertical-align:middle">${
-      s.name
-        ? `<div style="font-weight:bold;font-size:12px">${s.name}</div>${s.date ? `<div style="font-size:10px;color:#666;margin-top:3px">${s.date}</div>` : '<div style="font-size:10px;color:#bbb">미결재</div>'}`
-        : '<div style="color:#ddd">-</div>'
-    }</td>`
-  ).join("");
+  // 라벨 셀
+  const labelCell = (text) => new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 20 })] })],
+    shading: { type: ShadingType.CLEAR, fill: TEAL_LIGHT },
+    borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+    width: { size: 20, type: WidthType.PERCENTAGE },
+  });
 
-  let contentHtml = "";
+  // 값 셀
+  const valueCell = (text, span = 1) => new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text: String(text || "-"), size: 20 })] })],
+    borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+    columnSpan: span,
+  });
+
+  // 내용 테이블 행 생성
+  let contentRows = [];
   if (doc.type === "공문서") {
-    contentHtml = `
-      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-        <tr><td style="width:80px;background:#e8f7f9;padding:8px 10px;border:1px solid #b0d8e0;font-weight:bold;font-size:12px">수 신</td>
-            <td style="padding:8px 10px;border:1px solid #b0d8e0">${doc.fields.receiver||""}</td></tr>
-        <tr><td style="background:#e8f7f9;padding:8px 10px;border:1px solid #b0d8e0;font-weight:bold;font-size:12px">참 조</td>
-            <td style="padding:8px 10px;border:1px solid #b0d8e0">${doc.fields.reference||""}</td></tr>
-        <tr><td style="background:#e8f7f9;padding:8px 10px;border:1px solid #b0d8e0;font-weight:bold;font-size:12px">제 목</td>
-            <td style="padding:8px 10px;border:1px solid #b0d8e0;font-weight:bold">${doc.fields.subject||""}</td></tr>
-      </table>
-      <div style="line-height:2;margin:20px 0;padding:0 4px;white-space:pre-wrap;font-size:13px">${doc.fields.body||""}</div>
-      ${doc.fields.attachments ? `<div style="margin-top:20px;padding:10px 14px;border-left:3px solid #3ba8b8;background:#f5fbfc"><strong>붙임</strong><div style="margin-top:6px;white-space:pre-wrap;line-height:1.8">${doc.fields.attachments}</div></div>` : ""}
-    `;
+    contentRows = [
+      new TableRow({ children: [labelCell("수 신"), valueCell(doc.fields.receiver || "")] }),
+      new TableRow({ children: [labelCell("참 조"), valueCell(doc.fields.reference || "")] }),
+      new TableRow({ children: [labelCell("제 목"), valueCell(doc.fields.subject || "")] }),
+      new TableRow({ children: [
+        new TableCell({
+          columnSpan: 2,
+          children: [new Paragraph({ children: [new TextRun({ text: doc.fields.body || "", size: 22 })] })],
+          borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER },
+        })
+      ]}),
+      ...(doc.fields.attachments ? [new TableRow({ children: [labelCell("붙 임"), valueCell(doc.fields.attachments)] })] : []),
+    ];
   } else {
-    const rows = fields.map(f =>
-      `<tr><td style="width:120px;background:#e8f7f9;padding:8px 10px;border:1px solid #b0d8e0;font-weight:bold;font-size:12px">${f.label}</td>
-           <td style="padding:8px 10px;border:1px solid #b0d8e0">${f.key==="amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR")+"원" : (doc.fields[f.key]||"-")}</td></tr>`
-    ).join("");
-    contentHtml = `<table style="width:100%;border-collapse:collapse"><tbody>${rows}</tbody></table>`;
+    contentRows = fields.map(f => new TableRow({
+      children: [
+        labelCell(f.label),
+        valueCell(f.key === "amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR") + "원" : (doc.fields[f.key] || "-")),
+      ]
+    }));
   }
 
-  const orgInfo = `
-    <div style="text-align:center;margin-top:40px;padding-top:16px;border-top:1px solid #ccc;font-size:11px;color:#666;line-height:1.8">
-      <div>${new Date(doc.created_at).toLocaleDateString("ko-KR")}</div>
-      <div style="font-size:14px;font-weight:bold;margin:6px 0">${doc.author_dept} ${doc.author_title} ${doc.author_name}</div>
-      <div>시행: ${doc.id}</div>
-    </div>`;
+  const contentTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: contentRows,
+  });
 
-  const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8"/>
-<style>
-  body { font-family:'맑은 고딕','Malgun Gothic',sans-serif; padding:50px 60px; font-size:13px; color:#111; max-width:800px; margin:0 auto; }
-  h1 { font-size:20px; text-align:center; margin-bottom:4px; letter-spacing:2px; }
-  .doc-no { text-align:center; font-size:11px; color:#666; margin-bottom:30px; }
-  h2 { font-size:12px; font-weight:bold; margin:24px 0 8px; padding:4px 10px; background:#e8f7f9; color:#2a7a8c; border-left:3px solid #3ba8b8; }
-  .stamp-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
-  @media print { 
-    body { padding:20px 30px; }
-    .no-print { display:none; }
-    button { display:none; }
-  }
-</style>
-</head>
-<body>
-<div class="no-print" style="background:#3ba8b8;color:white;padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
-  <span>📄 인쇄하거나 "PDF로 저장"을 선택하면 저장돼요!</span>
-  <button onclick="window.print()" style="background:white;color:#2a7a8c;border:none;padding:6px 16px;border-radius:6px;font-weight:bold;cursor:pointer">🖨️ 인쇄 / 저장</button>
-</div>
-<h1>${doc.type}</h1>
-<div class="doc-no">문서번호: ${doc.id} &nbsp;|&nbsp; 기안일: ${new Date(doc.created_at).toLocaleDateString("ko-KR")} &nbsp;|&nbsp; 기안자: ${doc.author_name} (${doc.author_dept} · ${doc.author_title})</div>
+  // 이력 테이블
+  const historyTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        children: ["처리자", "액션", "비고", "일자"].map(t => makeHeaderCell(t))
+      }),
+      ...(doc.history||[]).map(h => new TableRow({
+        children: [
+          valueCell(h.user),
+          valueCell(h.action),
+          valueCell(h.note || "-"),
+          valueCell(h.date ? new Date(h.date).toLocaleDateString("ko-KR") : "-"),
+        ]
+      }))
+    ]
+  });
 
-<h2>결 재</h2>
-<table class="stamp-table"><tr>${stampHeaderCells}</tr><tr>${stampBodyCells}</tr></table>
+  // 섹션 제목 단락
+  const sectionTitle = (text) => new Paragraph({
+    children: [new TextRun({ text, bold: true, color: TEAL, size: 24 })],
+    spacing: { before: 300, after: 150 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: TEAL } },
+  });
 
-<h2>내 용</h2>
-${contentHtml}
-${orgInfo}
-</body>
-</html>`;
+  // 문서 생성
+  const wordDoc = new Document({
+    sections: [{
+      children: [
+        // 제목
+        new Paragraph({
+          children: [new TextRun({ text: doc.type, bold: true, size: 36, color: TEAL })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        // 문서 정보
+        new Paragraph({
+          children: [new TextRun({ text: `문서번호: ${doc.id}  |  기안일: ${new Date(doc.created_at).toLocaleDateString("ko-KR")}  |  기안자: ${doc.author_name} (${doc.author_dept} · ${doc.author_title})`, size: 18, color: "666666" })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+        // 결재판
+        sectionTitle("결 재"),
+        stampTable,
+        // 내용
+        sectionTitle("내 용"),
+        contentTable,
+        // 이력
+        sectionTitle("처리 이력"),
+        historyTable,
+        // 시행 정보
+        new Paragraph({
+          children: [new TextRun({ text: `시행: ${doc.id}  (${new Date(doc.created_at).toLocaleDateString("ko-KR")})`, size: 18, color: "666666" })],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 400 },
+        }),
+      ],
+    }],
+  });
 
-  // 모바일/PC 모두 호환: Blob URL로 새 탭 열기
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  const blob = await Packer.toBlob(wordDoc);
+  saveAs(blob, `${doc.id}_${doc.type}.docx`);
 }
-
-
 
 // ─── PDF 출력 ────────────────────────────────────────────────
 function printDoc(doc) {
@@ -818,7 +872,7 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }
                 if (window.confirm("이 문서를 삭제하시겠어요?\n삭제 후 복구할 수 없습니다.")) { onDelete(doc.id); onClose(); }
               }} style={{ padding: "5px 10px", background: "#7a9ebe", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ 삭제</button>
             )}
-            <button onClick={() => exportDocToWord(doc)} style={{ padding: "5px 10px", background: "#4db8a8", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ 문서보기</button>
+            <button onClick={() => exportDocToWord(doc)} style={{ padding: "5px 10px", background: "#4db8a8", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📄 워드</button>
             <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#2a7a8c", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
