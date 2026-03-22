@@ -48,11 +48,12 @@ const TEMPLATES = {
 };
 
 const STATUS_META = {
-  대기중: { color: "#f59e0b", bg: "#fef3c7", icon: "⏳" },
-  진행중: { color: "#3b82f6", bg: "#dbeafe", icon: "🔄" },
-  승인: { color: "#10b981", bg: "#d1fae5", icon: "✅" },
-  반려: { color: "#ef4444", bg: "#fee2e2", icon: "❌" },
-  임시저장: { color: "#8b5cf6", bg: "#ede9fe", icon: "📝" },
+  대기중: { color: "#5b9fd4", bg: "#e8f2fb", icon: "⏳" },
+  진행중: { color: "#3ba8b8", bg: "#e2f4f7", icon: "🔄" },
+  승인: { color: "#4db8a8", bg: "#e2f5f2", icon: "✅" },
+  반려: { color: "#7a9ebe", bg: "#edf3f8", icon: "❌" },
+  임시저장: { color: "#7ab8cc", bg: "#e8f4f8", icon: "📝" },
+  회수: { color: "#8aacbe", bg: "#edf3f7", icon: "↩️" },
 };
 
 let _docCounter = 0;
@@ -153,8 +154,7 @@ function exportExcel(docs) {
       lastDate ? new Date(lastDate).toLocaleDateString("ko-KR") : ""
     ]);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("
-");
+  const csv = rows.map(r => r.map(c => `"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
   const bom = "﻿";
   const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -212,7 +212,7 @@ async function parseWordToFields(file, docType) {
   const data = await res.json();
   const text = data.content?.map(i => i.text || "").join("") || "";
   try {
-    return JSON.parse(text.replace(/\`\`\`json|\`\`\`/g, "").trim());
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch { return null; }
 }
 
@@ -272,7 +272,7 @@ export default function App() {
 // ─── 로딩 화면 ────────────────────────────────────────────────
 function Splash() {
   return (
-    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#1e3a5f,#2d6a9f)", flexDirection: "column", gap: 16 }}>
+    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 48 }}>📋</div>
       <div style={{ color: "#fff", fontSize: 20, fontWeight: 800 }}>결재시스템</div>
       <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 14 }}>로딩 중...</div>
@@ -303,7 +303,7 @@ function AuthPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#1e3a5f,#2d6a9f)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Noto Sans KR',sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Noto Sans KR',sans-serif" }}>
       <div style={{ background: "#fff", borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>📋</div>
@@ -325,7 +325,7 @@ function AuthPage() {
             onKeyDown={e => e.key === "Enter" && handle()}
             style={{ padding: "12px 16px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, outline: "none" }} />
           {msg && <div style={{ fontSize: 13, color: msg.includes("완료") ? "#059669" : "#ef4444", textAlign: "center" }}>{msg}</div>}
-          <button onClick={handle} disabled={loading} style={{ padding: "13px 0", background: "linear-gradient(135deg,#1e3a5f,#2d6a9f)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+          <button onClick={handle} disabled={loading} style={{ padding: "13px 0", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
             {loading ? "처리 중..." : mode === "login" ? "로그인" : "회원가입"}
           </button>
         </div>
@@ -357,7 +357,7 @@ function ProfileSetup({ user, onDone }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#1e3a5f,#2d6a9f)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Noto Sans KR',sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Noto Sans KR',sans-serif" }}>
       <div style={{ background: "#fff", borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>👤</div>
@@ -381,7 +381,7 @@ function ProfileSetup({ user, onDone }) {
               {TITLES.map(t => <option key={t.label} value={t.label}>{t.label}</option>)}
             </select>
           </div>
-          <button onClick={save} disabled={!name || !dept || loading} style={{ padding: "13px 0", background: "linear-gradient(135deg,#1e3a5f,#2d6a9f)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer", marginTop: 4, opacity: (!name || !dept) ? 0.5 : 1 }}>
+          <button onClick={save} disabled={!name || !dept || loading} style={{ padding: "13px 0", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer", marginTop: 4, opacity: (!name || !dept) ? 0.5 : 1 }}>
             {loading ? "저장 중..." : "시작하기 →"}
           </button>
         </div>
@@ -454,6 +454,15 @@ function MainApp({ profile, session }) {
     await supabase.from("documents").update({ approval_status: newLine, status: newStatus, history: newHistory }).eq("id", docId);
   };
 
+  const recallDoc = async (docId) => {
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return;
+    const newStatus = "회수";
+    const newApprovalStatus = doc.approval_status.map(a => ({ ...a, status: "대기중", comment: "", date: null }));
+    const newHistory = [...doc.history, { action: "회수", user: profile.name, date: today(), note: "기안자 회수" }];
+    await supabase.from("documents").update({ status: newStatus, approval_status: newApprovalStatus, history: newHistory }).eq("id", docId);
+  };
+
   const logout = async () => { await supabase.auth.signOut(); };
 
   const stats = {
@@ -471,15 +480,15 @@ function MainApp({ profile, session }) {
   ];
 
   return (
-    <div style={{ fontFamily: "'Noto Sans KR','Malgun Gothic',sans-serif", minHeight: "100vh", background: "#f0f4f8", display: "flex", flexDirection: "column" }}>
+    <div style={{ fontFamily: "'Noto Sans KR','Malgun Gothic',sans-serif", minHeight: "100vh", background: "#f0f7f9", display: "flex", flexDirection: "column" }}>
       {/* 헤더 */}
-      <header style={{ background: "linear-gradient(135deg,#1e3a5f,#2d6a9f)", color: "#fff", padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 2px 8px rgba(0,0,0,0.2)", position: "sticky", top: 0, zIndex: 100 }}>
+      <header style={{ background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 2px 8px rgba(0,0,0,0.2)", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => setMobileMenu(!mobileMenu)} style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer", display: "block", padding: "4px 8px" }}>☰</button>
           <span style={{ fontSize: 18, fontWeight: 800 }}>📋 결재시스템</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => setNewDocModal(true)} style={{ padding: "7px 14px", background: "rgba(255,255,255,0.2)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>✏️ 기안</button>
+          <button onClick={() => setNewDocModal(true)} style={{ padding: "7px 14px", background: "rgba(255,255,255,0.25)", color: "#fff", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 20, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>✏️ 기안</button>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{profile.name[0]}</div>
             <button onClick={logout} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", fontSize: 12, cursor: "pointer" }}>로그아웃</button>
@@ -492,7 +501,7 @@ function MainApp({ profile, session }) {
         <>
           {mobileMenu && <div onClick={() => setMobileMenu(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 150 }} />}
           <nav style={{
-            width: "75vw", maxWidth: 280, background: "#1e3a5f", color: "#fff", padding: "16px 0",
+            width: "75vw", maxWidth: 280, background: "linear-gradient(180deg,#2a7a8c,#3ba8b8)", color: "#fff", padding: "16px 0",
             position: "fixed", top: 56, left: 0, bottom: 0, zIndex: 200,
             transform: mobileMenu ? "translateX(0)" : "translateX(-100%)",
             transition: "transform 0.25s ease",
@@ -505,9 +514,9 @@ function MainApp({ profile, session }) {
             {NAV.map(m => (
               <button key={m.key} onClick={() => { setTab(m.key); setMobileMenu(false); }} style={{
                 width: "100%", padding: "12px 20px", background: tab === m.key ? "rgba(255,255,255,0.15)" : "transparent",
-                color: tab === m.key ? "#7dd3fc" : "rgba(255,255,255,0.75)", border: "none", cursor: "pointer",
+                color: tab === m.key ? "#b2f0f5" : "rgba(255,255,255,0.75)", border: "none", cursor: "pointer",
                 textAlign: "left", fontSize: 14, display: "flex", alignItems: "center", gap: 10,
-                borderLeft: tab === m.key ? "3px solid #7dd3fc" : "3px solid transparent",
+                borderLeft: tab === m.key ? "3px solid #b2f0f5" : "3px solid transparent",
               }}>
                 {m.icon} {m.label}
                 {m.key === "pending" && stats.pending > 0 && (
@@ -516,7 +525,7 @@ function MainApp({ profile, session }) {
               </button>
             ))}
             <div style={{ margin: "16px 12px 0" }}>
-              <button onClick={() => { setNewDocModal(true); setMobileMenu(false); }} style={{ width: "100%", padding: "11px 0", background: "linear-gradient(135deg,#3b82f6,#2563eb)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>
+              <button onClick={() => { setNewDocModal(true); setMobileMenu(false); }} style={{ width: "100%", padding: "11px 0", background: "linear-gradient(135deg,#38bdd1,#2a9aaa)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>
                 ✏️ 기안 작성
               </button>
             </div>
@@ -539,7 +548,7 @@ function MainApp({ profile, session }) {
       </div>
 
       {/* 모달들 */}
-      {selectedDoc && <DocDetailModal doc={selectedDoc} profile={profile} onClose={() => setSelectedDoc(null)} onApprove={approveDoc} />}
+      {selectedDoc && <DocDetailModal doc={selectedDoc} profile={profile} onClose={() => setSelectedDoc(null)} onApprove={approveDoc} onRecall={recallDoc} />}
       {newDocModal && <NewDocModal onClose={() => setNewDocModal(false)} onSubmit={addDoc} profile={profile} allProfiles={profiles} />}
     </div>
   );
@@ -549,16 +558,16 @@ function MainApp({ profile, session }) {
 function Dashboard({ stats, docs, setSelectedDoc, setTab }) {
   return (
     <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f", marginBottom: 16 }}>📊 대시보드</h2>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#2a7a8c", marginBottom: 16 }}>📊 대시보드</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "전체 문서", value: stats.total, icon: "📋", color: "#3b82f6" },
-          { label: "결재 대기", value: stats.pending, icon: "⏳", color: "#f59e0b" },
-          { label: "승인 완료", value: stats.approved, icon: "✅", color: "#10b981" },
-          { label: "반려", value: stats.rejected, icon: "❌", color: "#ef4444" },
+          { label: "전체 문서", value: stats.total, icon: "📋", color: "#3ba8b8", bg: "#e8f7f9" },
+          { label: "결재 대기", value: stats.pending, icon: "⏳", color: "#5b9fd4", bg: "#e8f2fb" },
+          { label: "승인 완료", value: stats.approved, icon: "✅", color: "#4db8a8", bg: "#e6f7f5" },
+          { label: "반려", value: stats.rejected, icon: "❌", color: "#7a9ebe", bg: "#edf3f8" },
         ].map(s => (
-          <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", borderTop: `4px solid ${s.color}` }}>
-            <div style={{ fontSize: 24, marginBottom: 4 }}>{s.icon}</div>
+          <div key={s.label} style={{ background: s.bg || "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: `4px solid ${s.color}` }}>
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: 12, color: "#6b7280" }}>{s.label}</div>
           </div>
@@ -566,7 +575,7 @@ function Dashboard({ stats, docs, setSelectedDoc, setTab }) {
       </div>
       <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "#1e3a5f" }}>최근 문서</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: "#2a7a8c" }}>최근 문서</h3>
           <button onClick={() => setTab("history")} style={{ fontSize: 12, color: "#3b82f6", background: "none", border: "none", cursor: "pointer" }}>전체보기 →</button>
         </div>
         {docs.slice(0, 5).map(d => <DocRow key={d.id} doc={d} onClick={() => setSelectedDoc(d)} />)}
@@ -587,8 +596,8 @@ function DocList({ docs, title, setSelectedDoc }) {
         <button onClick={() => exportExcel(filtered)} style={{ padding: "7px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📊 엑셀 내보내기</button>
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {["전체", "대기중", "진행중", "승인", "반려"].map(s => (
-          <button key={s} onClick={() => setFilter(s)} style={{ padding: "5px 12px", borderRadius: 20, fontSize: 12, border: "none", cursor: "pointer", background: filter === s ? "#1e3a5f" : "#e5e7eb", color: filter === s ? "#fff" : "#374151", fontWeight: filter === s ? 700 : 400 }}>{s}</button>
+        {["전체", "대기중", "진행중", "승인", "반려", "회수"].map(s => (
+          <button key={s} onClick={() => setFilter(s)} style={{ padding: "5px 12px", borderRadius: 20, fontSize: 12, border: "none", cursor: "pointer", background: filter === s ? "#3ba8b8" : "#e8f4f7", color: filter === s ? "#fff" : "#4a7a8a", fontWeight: filter === s ? 700 : 400 }}>{s}</button>
         ))}
       </div>
       <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
@@ -609,7 +618,7 @@ function PendingList({ docs, profile, onApprove, setSelectedDoc }) {
   });
   return (
     <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f", marginBottom: 14 }}>⏳ 결재 대기함 ({pending.length})</h2>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#2a7a8c", marginBottom: 14 }}>⏳ 결재 대기함 ({pending.length})</h2>
       <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
         {pending.map((d, i) => (
           <DocRow key={d.id} doc={d} onClick={() => setSelectedDoc(d)} noBorder={i === pending.length - 1}
@@ -668,7 +677,7 @@ function DocRow({ doc, onClick, noBorder, showActions, onAction }) {
 }
 
 // ─── 문서 상세 모달 ───────────────────────────────────────────
-function DocDetailModal({ doc, profile, onClose, onApprove }) {
+function DocDetailModal({ doc, profile, onClose, onApprove, onRecall }) {
   const [commentMap, setCommentMap] = useState({});
   const meta = STATUS_META[doc.status] || STATUS_META["대기중"];
 
@@ -688,6 +697,11 @@ function DocDetailModal({ doc, profile, onClose, onApprove }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <span style={{ padding: "4px 12px", borderRadius: 20, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12 }}>{meta.icon} {doc.status}</span>
+            {doc.author_id === profile.id && doc.status !== "승인" && doc.status !== "회수" && (
+              <button onClick={() => {
+                if (window.confirm("기안을 회수하시겠어요? 진행 중인 결재가 초기화됩니다.")) { onRecall(doc.id); onClose(); }
+              }} style={{ padding: "5px 10px", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↩️ 회수</button>
+            )}
             <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
@@ -797,7 +811,7 @@ function ApprovalStamp({ doc }) {
             display: "flex", flexDirection: "column", minWidth: 0,
           }}>
             {/* 직급 */}
-            <div style={{ background: "#1e3a5f", color: "#fff", textAlign: "center", padding: "4px 2px", fontSize: 11, fontWeight: 700 }}>{s.role}</div>
+            <div style={{ background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", textAlign: "center", padding: "4px 2px", fontSize: 11, fontWeight: 700 }}>{s.role}</div>
             {/* 이름 + 날짜 영역 */}
             <div style={{
               minHeight: 52, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -993,7 +1007,7 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
                         <span style={{ fontSize: 14, fontWeight: 700, color: isSelected ? "#3b82f6" : "#111827" }}>{p.name}</span>
                         <span style={{ fontSize: 12, color: "#6b7280", marginLeft: 6 }}>{p.dept} · {p.title}</span>
                       </div>
-                      {p.title === "소장" && <span style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px", background: "#ede9fe", color: "#7c3aed", borderRadius: 20, fontWeight: 700 }}>소장</span>}
+                      {p.title === "소장" && <span style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px", background: "#d6f0f4", color: "#2a8a9c", borderRadius: 20, fontWeight: 700 }}>소장</span>}
                     </button>
                   );
                 })}
