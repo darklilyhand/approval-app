@@ -68,72 +68,79 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString("ko-KR", { year: "nume
 const fmtNum = (n) => Number(n || 0).toLocaleString("ko-KR");
 
 // ─── 워드(.docx) 내보내기 ───────────────────────────────────────
-function exportDocToWord(doc) {
+async function exportDocToWord(doc) {
   const fields = TEMPLATES[doc.type]?.fields || [];
   const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
 
-  // 결재판 행 생성
-  const stampHeader = ROLES.map(r => `<td style="border:1px solid #2a7a8c;padding:6px;text-align:center;background:#e2f4f7;font-weight:bold;font-size:11px;width:60px">${r}</td>`).join("");
-  const stampBody = ROLES.map(role => {
-    const idx = (doc.approval_line||[]).findIndex(u => u.title === role || u.title.includes(role));
-    if (idx < 0) return `<td style="border:1px solid #2a7a8c;padding:10px 6px;text-align:center;color:#ccc">-</td>`;
+  // 결재판 데이터
+  const stamps = ROLES.map(role => {
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
+    if (idx < 0) return { role, name: "", date: "" };
     const st = (doc.approval_status||[])[idx];
-    const name = doc.approval_line[idx].name;
-    const date = st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}).replace(". ","/").replace(".","") : "";
-    return `<td style="border:1px solid #2a7a8c;padding:8px 4px;text-align:center"><div style="font-weight:bold">${name}</div>${date ? `<div style="font-size:10px;color:#666;margin-top:2px">${date}</div>` : ""}</td>`;
-  }).join("");
+    const date = st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}) : "";
+    return { role, name: doc.approval_line[idx].name, date };
+  });
 
-  // 문서 종류별 본문
-  let bodyHtml = "";
+  // 공문서 본문 생성
+  let contentRows = "";
   if (doc.type === "공문서") {
-    bodyHtml = `
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
-        <tr><td style="padding:6px 12px;border:1px solid #ccc;width:80px;background:#f0f7f9;font-weight:bold">수신</td><td style="padding:6px 12px;border:1px solid #ccc">${doc.fields.receiver||""}</td></tr>
-        <tr><td style="padding:6px 12px;border:1px solid #ccc;background:#f0f7f9;font-weight:bold">참조</td><td style="padding:6px 12px;border:1px solid #ccc">${doc.fields.reference||""}</td></tr>
-        <tr><td style="padding:6px 12px;border:1px solid #ccc;background:#f0f7f9;font-weight:bold">제목</td><td style="padding:6px 12px;border:1px solid #ccc;font-weight:bold">${doc.fields.subject||""}</td></tr>
-      </table>
-      <div style="line-height:1.8;margin-bottom:20px;white-space:pre-wrap">${doc.fields.body||""}</div>
-      ${doc.fields.attachments ? `<div style="margin-top:16px;padding:12px;background:#f9fafb;border-left:3px solid #3ba8b8"><strong>붙임</strong><br/><pre style="margin:6px 0;font-family:inherit">${doc.fields.attachments}</pre></div>` : ""}
+    contentRows = `
+      <tr><td style="width:80px;background:#e2f4f7;padding:8px;border:1px solid #aaa;font-weight:bold">수신</td><td style="padding:8px;border:1px solid #aaa">${doc.fields.receiver||""}</td></tr>
+      <tr><td style="background:#e2f4f7;padding:8px;border:1px solid #aaa;font-weight:bold">참조</td><td style="padding:8px;border:1px solid #aaa">${doc.fields.reference||""}</td></tr>
+      <tr><td style="background:#e2f4f7;padding:8px;border:1px solid #aaa;font-weight:bold">제목</td><td style="padding:8px;border:1px solid #aaa;font-weight:bold">${doc.fields.subject||""}</td></tr>
+      <tr><td colspan="2" style="padding:16px;border:1px solid #aaa;white-space:pre-wrap;line-height:1.8">${doc.fields.body||""}</td></tr>
+      ${doc.fields.attachments ? `<tr><td style="background:#e2f4f7;padding:8px;border:1px solid #aaa;font-weight:bold">붙임</td><td style="padding:8px;border:1px solid #aaa;white-space:pre-wrap">${doc.fields.attachments}</td></tr>` : ""}
     `;
   } else {
-    bodyHtml = fields.map(f => `
+    contentRows = fields.map(f => `
       <tr>
-        <td style="padding:8px 12px;border:1px solid #ccc;width:120px;background:#f0f7f9;font-weight:bold">${f.label}</td>
-        <td style="padding:8px 12px;border:1px solid #ccc">${f.key==="amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR")+"원" : (doc.fields[f.key]||"-")}</td>
+        <td style="width:120px;background:#e2f4f7;padding:8px;border:1px solid #aaa;font-weight:bold">${f.label}</td>
+        <td style="padding:8px;border:1px solid #aaa">${f.key==="amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR")+"원" : (doc.fields[f.key]||"-")}</td>
       </tr>`).join("");
-    bodyHtml = `<table style="width:100%;border-collapse:collapse;margin-bottom:20px"><tbody>${bodyHtml}</tbody></table>`;
   }
 
-  const html = `<!DOCTYPE html><html lang="ko">
-<head><meta charset="utf-8"/>
+  // 결재판 HTML
+  const stampHeaderCells = stamps.map(s => `<td style="border:1px solid #2a7a8c;padding:4px;text-align:center;background:#2a7a8c;color:white;font-size:11px;font-weight:bold">${s.role}</td>`).join("");
+  const stampBodyCells = stamps.map(s => `<td style="border:1px solid #2a7a8c;padding:10px 4px;text-align:center;min-width:55px">${s.name ? `<div style="font-weight:bold">${s.name}</div>${s.date ? `<div style="font-size:10px;color:#666;margin-top:3px">${s.date}</div>` : ""}` : ""}</td>`).join("");
+
+  const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset='utf-8'/>
 <style>
-  body { font-family: 'Malgun Gothic', sans-serif; padding: 40px; font-size: 13px; }
-  h1 { font-size: 18px; text-align: center; margin-bottom: 6px; }
-  .meta { text-align:center; color:#666; font-size:12px; margin-bottom:24px; }
-  h2 { font-size: 13px; font-weight:bold; margin: 20px 0 8px; color:#2a7a8c; border-bottom:1px solid #3ba8b8; padding-bottom:4px; }
-  table { width:100%; border-collapse:collapse; }
-  @media print { button { display:none } }
+  body { font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; font-size: 13px; margin: 40px; }
+  h1 { font-size: 20px; text-align: center; border-bottom: 2px solid #2a7a8c; padding-bottom: 8px; margin-bottom: 4px; }
+  .doc-meta { text-align: center; color: #666; font-size: 11px; margin-bottom: 24px; }
+  h2 { font-size: 13px; background: #e2f4f7; padding: 6px 10px; margin: 20px 0 8px; color: #2a7a8c; }
+  table { width: 100%; border-collapse: collapse; }
 </style>
 </head><body>
 <h1>${doc.type}</h1>
-<div class="meta">문서번호: ${doc.id} | 기안일: ${new Date(doc.created_at).toLocaleDateString("ko-KR")} | 기안자: ${doc.author_name} (${doc.author_dept})</div>
-<h2>🔖 결재</h2>
-<table><tr>${stampHeader}</tr><tr>${stampBody}</tr></table>
-<h2>📄 내용</h2>
-${bodyHtml}
-<script>window.onload=()=>{ window.document.execCommand('SaveAs', true, '${doc.id}_${doc.type}.doc'); }</script>
+<div class="doc-meta">문서번호: ${doc.id} &nbsp;|&nbsp; 기안일: ${new Date(doc.created_at).toLocaleDateString("ko-KR")} &nbsp;|&nbsp; 기안자: ${doc.author_name} (${doc.author_dept} · ${doc.author_title})</div>
+
+<h2>결재</h2>
+<table><tr>${stampHeaderCells}</tr><tr>${stampBodyCells}</tr></table>
+
+<h2>내용</h2>
+<table><tbody>${contentRows}</tbody></table>
+
+<h2>처리 이력</h2>
+<table>
+  <tr><th style="background:#e2f4f7;padding:6px;border:1px solid #aaa">처리자</th><th style="background:#e2f4f7;padding:6px;border:1px solid #aaa">액션</th><th style="background:#e2f4f7;padding:6px;border:1px solid #aaa">비고</th><th style="background:#e2f4f7;padding:6px;border:1px solid #aaa">일자</th></tr>
+  ${(doc.history||[]).map(h => `<tr><td style="padding:6px;border:1px solid #ddd">${h.user}</td><td style="padding:6px;border:1px solid #ddd">${h.action}</td><td style="padding:6px;border:1px solid #ddd">${h.note||"-"}</td><td style="padding:6px;border:1px solid #ddd">${h.date ? new Date(h.date).toLocaleDateString("ko-KR") : "-"}</td></tr>`).join("")}
+</table>
 </body></html>`;
 
-  const blob = new Blob(["﻿" + html], { type: "application/msword;charset=utf-8" });
+  const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-word;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = `${doc.id}_${doc.type}.doc`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-// ─── PDF 출력 ────────────────────────────────────────────────
+// ─── PDF 출력 ────────────────────────────────────────────────// ─── PDF 출력 ────────────────────────────────────────────────
 function printDoc(doc) {
   const fields = TEMPLATES[doc.type]?.fields || [];
   const approvalRows = (doc.approval_line || []).map((u, i) => {
