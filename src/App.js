@@ -69,184 +69,198 @@ const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
 const fmtNum = (n) => Number(n || 0).toLocaleString("ko-KR");
 
-// ─── 공문서 양식 .docx 생성 ─────────────────────────────────────
+// ─── .docx 생성 ──────────────────────────────────────────────────
 async function exportDocToWord(doc, orgName) {
   const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
-  const TEAL = "1e3a5f";
-  const TEAL_LIGHT = "dbeafe";
-  const B = (color="999999") => ({ style: BorderStyle.SINGLE, size: 4, color });
-  const BORDER = { top: B(), bottom: B(), left: B(), right: B() };
-  const TEAL_BORDER = { top: B(TEAL), bottom: B(TEAL), left: B(TEAL), right: B(TEAL) };
+  const fields = TEMPLATES[doc.type]?.fields || [];
 
-  const txt = (text, opts={}) => new TextRun({ text: String(text||""), size: 22, ...opts });
-  const para = (children, opts={}) => new Paragraph({ children: Array.isArray(children) ? children : [children], ...opts });
-
-  // 기관명/연락처
-  const ORG = {
-    "묘한 LAB": {
-      name: "묘한 LAB",
-      addr: "(03132) 서울특별시 종로구 삼일대로 30길 21, 203호 (낙원동, 종로오피스텔)",
-      tel: "02-764-7894",
-      fax: "02-764-7891",
-      email: "precuratorkp@gmail.com",
-      web: "http://www.pmuseums.org",
-    },
-    "묘한박물관": {
-      name: "묘한박물관",
-      addr: "(03132) 서울특별시 종로구 삼일대로 30길 21, 203호 (낙원동, 종로오피스텔)",
-      tel: "02-764-7894",
-      fax: "02-764-7891",
-      email: "precuratorkp@gmail.com",
-      web: "http://www.pmuseums.org",
-    },
-  };
-  const org = ORG[orgName] || ORG["묘한 LAB"];
-
-  // 날짜
-  const docDate = new Date(doc.created_at).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
-
-  // 결재판
-  const stamps = ROLES.map(role => {
-    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
-    if (idx < 0) return { role, name: "", date: "" };
-    const st = (doc.approval_status||[])[idx];
-    return { role, name: doc.approval_line[idx].name, date: st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}) : "" };
+  // ── 공통 헬퍼 ──────────────────────────────────────────────
+  const B = (color="AAAAAA", sz=4) => ({ style: BorderStyle.SINGLE, size: sz, color });
+  const BD = { top:B(),bottom:B(),left:B(),right:B() };
+  const t = (text, opts={}) => new TextRun({ text: String(text||""), size: 22, font:"맑은 고딕", ...opts });
+  const p = (children, opts={}) => new Paragraph({
+    children: Array.isArray(children) ? children : [children],
+    ...opts
   });
+  const emptyP = () => p(t(""), { spacing:{ before:0, after:0 } });
 
-  const stampTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: { top: B(TEAL), bottom: B(TEAL), left: B(TEAL), right: B(TEAL), insideH: B(TEAL), insideV: B(TEAL) },
-    rows: [
-      new TableRow({ children: stamps.map(s => new TableCell({
-        children: [para(txt(s.role, { bold: true, color: "FFFFFF", size: 18 }), { alignment: AlignmentType.CENTER })],
-        shading: { type: ShadingType.CLEAR, fill: TEAL },
-        width: { size: 16, type: WidthType.PERCENTAGE },
-      })) }),
-      new TableRow({ tableHeader: false, children: stamps.map(s => new TableCell({
-        children: [
-          para(txt(s.name || "", { bold: true, size: 22 }), { alignment: AlignmentType.CENTER, spacing: { before: 80 } }),
-          para(txt(s.date || (s.name ? "미결재" : "-"), { size: 16, color: s.date ? "333333" : "AAAAAA" }), { alignment: AlignmentType.CENTER, spacing: { after: 80 } }),
+  // ── 공문서 양식 ─────────────────────────────────────────────
+  if (doc.type === "공문서") {
+    const ORG = {
+      "묘한 LAB":   { name:"묘한 LAB",   addr:"(03132) 서울특별시 종로구 삼일대로 30길 21, 203호 (낙원동, 종로오피스텔)", tel:"02-764-7894", fax:"02-764-7891", email:"precuratorkp@gmail.com", web:"http://www.pmuseums.org" },
+      "묘한박물관": { name:"묘한박물관", addr:"(03132) 서울특별시 종로구 삼일대로 30길 21, 203호 (낙원동, 종로오피스텔)", tel:"02-764-7894", fax:"02-764-7891", email:"precuratorkp@gmail.com", web:"http://www.pmuseums.org" },
+    };
+    const org = ORG[orgName] || ORG["묘한 LAB"];
+    const docDate = new Date(doc.created_at).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"});
+
+    // 결재자 이름 줄: "직원 배하은   대리 윤기은   ..."
+    const stampLine = ROLES.map(role => {
+      const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
+      const name = idx >= 0 ? doc.approval_line[idx].name : "　　　";
+      return `${role}  ${name}`;
+    }).join("        ");
+
+    // 공문 내용 테이블 (수신/참조/제목/본문/붙임)
+    const mkRow = (label, value, bold=false) => new TableRow({ children:[
+      new TableCell({
+        children:[p(t(label,{bold:true,size:20,font:"맑은 고딕"}))],
+        shading:{type:ShadingType.CLEAR, fill:"EFF6FF"},
+        width:{size:2000, type:WidthType.DXA},
+        borders:BD,
+      }),
+      new TableCell({
+        children:[p(t(value,{bold,size:22,font:"맑은 고딕"}))],
+        width:{size:7000, type:WidthType.DXA},
+        borders:BD,
+      }),
+    ]});
+
+    const bodyLines = (doc.fields.body||"").split("\n");
+    const attachLines = (doc.fields.attachments||"").split("\n");
+
+    const contentTable = new Table({
+      width:{size:9000, type:WidthType.DXA},
+      rows:[
+        mkRow("수  신", doc.fields.receiver||""),
+        mkRow("참  조", doc.fields.reference||""),
+        mkRow("제  목", doc.fields.subject||"", true),
+        new TableRow({ children:[new TableCell({
+          columnSpan:2,
+          width:{size:9000, type:WidthType.DXA},
+          borders:BD,
+          children:[
+            emptyP(),
+            ...bodyLines.map(line => p(t(line,{size:22,font:"맑은 고딕"}),{spacing:{line:360,before:0,after:0}})),
+            emptyP(),
+            ...(doc.fields.attachments ? [
+              emptyP(),
+              ...attachLines.map((line,i) => p(t((i===0?"붙  임  ":"          ")+line,{size:22,font:"맑은 고딕"}),{spacing:{after:0}})),
+            ]:[]),
+            emptyP(),
+          ],
+        })]},
+      ),
+      ],
+    });
+
+    // 하단 시행 정보 테이블
+    const footerTable = new Table({
+      width:{size:9000, type:WidthType.DXA},
+      borders:{ top:B("1e3a5f",8), bottom:B(), left:B(), right:B(), insideH:B(), insideV:B() },
+      rows:[new TableRow({children:[new TableCell({
+        width:{size:9000, type:WidthType.DXA},
+        borders:BD,
+        children:[
+          p(t(stampLine,{size:18,font:"맑은 고딕"}),{spacing:{before:100,after:100}, border:{bottom:{style:BorderStyle.SINGLE,size:4,color:"CCCCCC"}}}),
+          p(t(`시행 : ${org.name} ${doc.id}  (${docDate})`,{size:18,font:"맑은 고딕"}),{spacing:{before:80,after:40}}),
+          p(t(`주소 : ${org.addr}`,{size:18,font:"맑은 고딕"}),{spacing:{after:40}}),
+          p([t(`전화 : ${org.tel}`,{size:18,font:"맑은 고딕"}),t(`  /  팩스 : ${org.fax}`,{size:18,font:"맑은 고딕"})],{spacing:{after:40}}),
+          p([t(`이메일 : ${org.email}`,{size:18,font:"맑은 고딕"}),t(`  /  홈페이지 : ${org.web}`,{size:18,font:"맑은 고딕"})],{spacing:{after:80}}),
         ],
-        width: { size: 16, type: WidthType.PERCENTAGE },
-      })) }),
-    ],
-  });
+      })]})],
+    });
 
-  // 공문서 본문 테이블
-  const makeRow = (label, value, bold=false, colSpan=1) => new TableRow({ children: [
+    const wordDoc = new Document({
+      sections:[{
+        properties:{ page:{ margin:{ top:1000, bottom:1000, left:1200, right:1200 } } },
+        children:[
+          // 기관명
+          p(t(org.name,{bold:true,size:52,color:"1e3a5f",font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{after:100}}),
+          new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:12,color:"1e3a5f"}},children:[],spacing:{after:400}}),
+          // 공문 내용
+          contentTable,
+          // 날짜 + 기관
+          emptyP(), emptyP(),
+          p(t(docDate,{size:24,font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{after:120}}),
+          p(t(`${org.name} 소장  ${doc.author_name}`,{bold:true,size:26,font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{after:400}}),
+          // 시행 정보
+          footerTable,
+        ],
+      }],
+    });
+
+    const blob = await Packer.toBlob(wordDoc);
+    saveAs(blob, `${doc.id}_공문서.docx`);
+    return;
+  }
+
+  // ── 일반 문서 양식 (지출결의서, 휴가신청서 등) ───────────────
+  const mkRow2 = (label, value) => new TableRow({ children:[
     new TableCell({
-      children: [para(txt(label, { bold: true, size: 20 }))],
-      shading: { type: ShadingType.CLEAR, fill: "EFF6FF" },
-      width: { size: 15, type: WidthType.PERCENTAGE },
-      borders: BORDER,
+      children:[p(t(label,{bold:true,size:20,font:"맑은 고딕"}))],
+      shading:{type:ShadingType.CLEAR,fill:"EFF6FF"},
+      width:{size:2000,type:WidthType.DXA},
+      borders:BD,
     }),
     new TableCell({
-      children: [para(txt(value, { bold, size: 22 }))],
-      columnSpan: colSpan,
-      borders: BORDER,
+      children:[p(t(value,{size:22,font:"맑은 고딕"}))],
+      width:{size:7000,type:WidthType.DXA},
+      borders:BD,
     }),
   ]});
 
-  const contentTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [
-      makeRow("수 신", doc.fields.receiver || ""),
-      makeRow("참 조", doc.fields.reference || ""),
-      makeRow("제 목", doc.fields.subject || "", true),
-      new TableRow({ children: [new TableCell({
-        columnSpan: 2,
-        children: [
-          para([]),
-          ...(doc.fields.body||"").split("
-").map(line => para(txt(line, { size: 22 }), { spacing: { line: 360 } })),
-          para([]),
-          ...(doc.fields.attachments ? [
-            para([]),
-            ...(doc.fields.attachments).split("
-").map((line, i) => para(txt((i===0?"붙임  ":"　     ")+line, { size: 22 })))
-          ] : []),
+  const contentTable2 = new Table({
+    width:{size:9000, type:WidthType.DXA},
+    rows: fields.map(f => mkRow2(
+      f.label,
+      f.key==="amount" ? Number(doc.fields[f.key]||0).toLocaleString("ko-KR")+"원" : (doc.fields[f.key]||"-")
+    )),
+  });
+
+  // 결재판 표
+  const TEAL = "1e3a5f";
+  const stamps = ROLES.map(role => {
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
+    if (idx < 0) return { role, name:"", date:"" };
+    const st = (doc.approval_status||[])[idx];
+    return { role, name:doc.approval_line[idx].name, date:st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}) : "" };
+  });
+
+  const stampTable = new Table({
+    width:{size:9000, type:WidthType.DXA},
+    rows:[
+      new TableRow({ children:stamps.map(s => new TableCell({
+        children:[p(t(s.role,{bold:true,color:"FFFFFF",size:18,font:"맑은 고딕"}),{alignment:AlignmentType.CENTER})],
+        shading:{type:ShadingType.CLEAR,fill:TEAL},
+        width:{size:1500,type:WidthType.DXA},
+        borders:BD,
+      }))}),
+      new TableRow({ children:stamps.map(s => new TableCell({
+        children:[
+          p(t(s.name||"",{bold:!!s.name,size:20,font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{before:60}}),
+          p(t(s.date||(s.name?"미결재":""),{size:16,color:s.date?"333333":"AAAAAA",font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{after:60}}),
         ],
-        borders: BORDER,
-      })]},
-    ),
+        width:{size:1500,type:WidthType.DXA},
+        borders:BD,
+      }))}),
     ],
   });
 
-  // 하단 결재자 이름 줄 생성
-  // "직원 배하은   대리 윤기은   과장 김현수 ..." 형태
-  const stampLine = ROLES.map(role => {
-    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
-    const name = idx >= 0 ? doc.approval_line[idx].name : "　　　";
-    return `${role}  ${name}`;
-  }).join("     ");
+  const docDate2 = new Date(doc.created_at).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"});
 
-  // 하단 시행 정보 테이블
-  const footerTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: { top: B(TEAL), bottom: B(), left: B(), right: B(), insideH: B(), insideV: B() },
-    rows: [new TableRow({ children: [new TableCell({
-      children: [
-        // 결재자 이름 줄
-        para(txt(stampLine, { size: 18 }), { spacing: { before: 80, after: 100 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC" } } }),
-        // 시행 정보
-        para(txt(`시행 : ${org.name} ${doc.id}  (${docDate})`, { size: 18 }), { spacing: { before: 80, after: 40 } }),
-        para(txt(`주소 : ${org.addr}`, { size: 18 }), { spacing: { after: 40 } }),
-        para([txt(`전화 : ${org.tel}`, { size: 18 }), txt(`  /  팩스 : ${org.fax}`, { size: 18 })], { spacing: { after: 40 } }),
-        para([txt(`이메일 : ${org.email}`, { size: 18 }), txt(`  /  홈페이지 : ${org.web}`, { size: 18 })], { spacing: { after: 80 } }),
-      ],
-      borders: BORDER,
-    })]})],
-  });
-
-  // 문서 전체 조립
-  const wordDoc = new Document({
-    sections: [{
-      properties: { page: { margin: { top: 1000, bottom: 1000, left: 1200, right: 1200 } } },
-      children: [
-        // 기관명 헤더
-        para(txt(org.name, { bold: true, size: 48, color: TEAL }), { alignment: AlignmentType.CENTER, spacing: { after: 100 } }),
-        new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: TEAL } }, children: [], spacing: { after: 300 } }),
-
-        // 공문 내용
-        para([], { spacing: { before: 300 } }),
-        contentTable,
-
-        // 날짜 + 기관
-        para([], { spacing: { before: 400 } }),
-        para(txt(docDate, { size: 24 }), { alignment: AlignmentType.CENTER, spacing: { after: 120 } }),
-        para(txt(`${org.name} 소장  ${doc.author_name}`, { bold: true, size: 26 }), { alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
-
-        // 시행 정보
-        footerTable,
+  const wordDoc2 = new Document({
+    sections:[{
+      properties:{ page:{ margin:{ top:1000, bottom:1000, left:1200, right:1200 } } },
+      children:[
+        // 제목
+        p(t(doc.type,{bold:true,size:40,color:TEAL,font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{after:100}}),
+        new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:8,color:TEAL}},children:[],spacing:{after:300}}),
+        // 결재판
+        p(t("결    재",{bold:true,size:22,color:TEAL,font:"맑은 고딕"}),{spacing:{before:100,after:120}}),
+        stampTable,
+        // 내용
+        p(t("내    용",{bold:true,size:22,color:TEAL,font:"맑은 고딕"}),{spacing:{before:300,after:120}}),
+        contentTable2,
+        // 기안 정보
+        emptyP(),
+        p(t(`문서번호: ${doc.id}  |  기안일: ${docDate2}  |  기안자: ${doc.author_name} (${doc.author_dept} · ${doc.author_title})`,{size:18,color:"666666",font:"맑은 고딕"}),{alignment:AlignmentType.CENTER,spacing:{before:300}}),
       ],
     }],
   });
 
-  const blob = await Packer.toBlob(wordDoc);
-  saveAs(blob, `${doc.id}_${doc.type}.docx`);
+  const blob2 = await Packer.toBlob(wordDoc2);
+  saveAs(blob2, `${doc.id}_${doc.type}.docx`);
 }
-
-// 기관명 선택 모달
-function OrgSelectModal({ doc, onClose }) {
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 300, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f", marginBottom: 8 }}>📋 기관명 선택</div>
-        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>워드 문서에 표시할 기관명을 선택하세요.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {["묘한 LAB", "묘한박물관"].map(org => (
-            <button key={org} onClick={() => { exportDocToWord(doc, org); onClose(); }}
-              style={{ padding: "12px 0", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
-              {org}
-            </button>
-          ))}
-        </div>
-        <button onClick={onClose} style={{ width: "100%", marginTop: 10, padding: "10px 0", background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>취소</button>
-      </div>
-    </div>
-  );
-}
-
 
 // ─── PDF 출력 ────────────────────────────────────────────────
 function printDoc(doc) {
@@ -894,7 +908,7 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }
                 if (window.confirm("이 문서를 삭제하시겠어요?\n삭제 후 복구할 수 없습니다.")) { onDelete(doc.id); onClose(); }
               }} style={{ padding: "5px 10px", background: "#7a9ebe", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ 삭제</button>
             )}
-            <button onClick={() => { if (doc.type === "공문서") setShowOrgModal(true); else exportDocToWord(doc, "묘한 LAB"); }} style={{ padding: "5px 10px", background: "#4db8a8", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📄 워드</button>
+            <button onClick={() => { if (doc.type === "공문서") setShowOrgModal(true); else if (doc.type === "지출결의서") exportExpenseToWord(doc); else exportDocToWord(doc, "묘한 LAB"); }} style={{ padding: "5px 10px", background: "#4db8a8", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📄 워드</button>
             <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#2a7a8c", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
@@ -950,6 +964,21 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete }
             })}
           </div>
 
+          {/* 첨부파일 */}
+          {doc.attachments && doc.attachments.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>📎 첨부파일</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {doc.attachments.map((f, i) => (
+                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7f9", borderRadius: 8, padding: "8px 12px", textDecoration: "none", border: "1px solid #b0d8e0" }}>
+                    <span style={{ fontSize: 16 }}>📄</span>
+                    <span style={{ fontSize: 13, color: "#2a7a8c", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{(f.size/1024).toFixed(0)}KB</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           {/* 이력 */}
           <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>📚 처리 이력</h3>
           <div style={{ background: "#f9fafb", borderRadius: 10, padding: 14 }}>
@@ -1042,8 +1071,30 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
   const [selectedApprovers, setSelectedApprovers] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
+  const [attachments, setAttachments] = useState([]); // { name, url, size }
+  const [uploading, setUploading] = useState(false);
 
   const setField = (k, v) => setFields(p => ({ ...p, [k]: v }));
+
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    const uploaded = [];
+    for (const file of files) {
+      const ext = file.name.split(".").pop();
+      const path = `attachments/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error } = await supabase.storage.from("documents").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("documents").getPublicUrl(path);
+        uploaded.push({ name: file.name, url: data.publicUrl, size: file.size });
+      }
+    }
+    setAttachments(prev => [...prev, ...uploaded]);
+    setUploading(false);
+  };
+
+  const removeAttachment = (idx) => setAttachments(prev => prev.filter((_, i) => i !== idx));
 
   const handleAI = async () => {
     setAiLoading(true);
@@ -1073,13 +1124,14 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
     const approvalLine = sortedApprovers.map(p => ({ id: p.id, name: p.name, title: p.title, dept: p.dept }));
     const doc = {
       id: genId(), type: docType,
-      title: `[${docType}] ${titleMap[docType]}`,
+      title: `[${docType}] ${titleMap[docType] || "문서"}`,
       author_id: profile.id, author_name: profile.name,
       author_dept: profile.dept, author_title: profile.title,
       status: "대기중",
       approval_line: approvalLine,
       approval_status: approvalLine.map(() => ({ status: "대기중", comment: "", date: null })),
-      fields, history: [{ action: "기안 제출", user: profile.name, date: today(), note: "" }],
+      fields, attachments,
+      history: [{ action: "기안 제출", user: profile.name, date: today(), note: "" }],
     };
     onSubmit(doc);
   };
@@ -1166,7 +1218,27 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
                   )}
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              {/* 첨부파일 업로드 */}
+              <div style={{ marginTop: 14, background: "#f8fafc", borderRadius: 10, padding: 14, border: "1.5px dashed #b0d8e0" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#2a7a8c", marginBottom: 8 }}>📎 첨부파일</div>
+                <label style={{ display: "inline-block", padding: "7px 14px", background: "#2a7a8c", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                  {uploading ? "⏳ 업로드 중..." : "+ 파일 추가"}
+                  <input type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
+                </label>
+                {attachments.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                    {attachments.map((f, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", borderRadius: 6, padding: "6px 10px", border: "1px solid #e5e7eb" }}>
+                        <span style={{ fontSize: 14 }}>📄</span>
+                        <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#2a7a8c", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</a>
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>{(f.size/1024).toFixed(0)}KB</span>
+                        <button onClick={() => removeAttachment(i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <button onClick={() => setStep(1)} style={{ flex: 1, padding: 12, background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>← 이전</button>
                 <button onClick={() => setStep(3)} style={{ flex: 2, padding: 12, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
               </div>
