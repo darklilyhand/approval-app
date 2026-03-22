@@ -320,16 +320,21 @@ function printDoc(doc) {
   <h2>🔖 결재판</h2><table class="stamp-table"><tr>${stampCells}</tr></table>
   <h2>📄 기안 내용</h2>
   <table><tbody>${fieldRows}</tbody></table>
-  <h2>👥 결재라인</h2>
-  <table><thead><tr><th>결재자</th><th>상태</th><th>의견</th><th>처리일</th></tr></thead><tbody>${approvalRows}</tbody></table>
   <h2>📚 처리 이력</h2>
   <table><thead><tr><th>처리자</th><th>액션</th><th>비고</th><th>일자</th></tr></thead><tbody>${historyRows}</tbody></table>
   <script>window.onload = () => window.print();</script>
   </body></html>`;
 
-  const w = window.open("", "_blank");
-  w.document.write(html);
-  w.document.close();
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // ─── 엑셀 내보내기 ───────────────────────────────────────────
