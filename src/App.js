@@ -368,57 +368,65 @@ function exportExcel(docs) {
   URL.revokeObjectURL(url);
 }
 
-// ─── 워드 파일 파싱 (mammoth 사용) ──────────────────────────────
-async function parseWordFile(file) {
+// ─── 워드 파일 파싱 (mammoth - API 없이 직접 텍스트 추출) ──────────
+async function parseWordToFields(file, docType) {
   try {
-    const mammoth = await import("https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js");
+    // mammoth CDN으로 docx 텍스트 추출
+    const mammoth = window._mammoth || await new Promise((resolve, reject) => {
+      if (window.mammoth) { resolve(window.mammoth); return; }
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
+      script.onload = () => resolve(window.mammoth);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value || "";
+    const text = result.value || "";
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+
+    // 문서 종류별 파싱
+    if (docType === "공문서") {
+      const getValue = (keyword) => {
+        const line = lines.find(l => l.startsWith(keyword));
+        return line ? line.replace(keyword, "").replace(/^[\s:：]+/, "").trim() : "";
+      };
+      const receiverLine = lines.find(l => /^수\s*신/.test(l)) || "";
+      const referenceLine = lines.find(l => /^참\s*조/.test(l)) || "";
+      const subjectLine = lines.find(l => /^제\s*목/.test(l)) || "";
+      const receiverIdx = lines.indexOf(receiverLine);
+      const subjectIdx = lines.indexOf(subjectLine);
+      const bodyLines = subjectIdx >= 0
+        ? lines.slice(subjectIdx + 1).filter(l => !/^붙\s*임/.test(l) && !/^\d{4}년/.test(l) && !/시행/.test(l) && !/주소/.test(l))
+        : [];
+      const attachLine = lines.find(l => /^붙\s*임/.test(l)) || "";
+      return {
+        receiver: receiverLine.replace(/^수\s*신\s*[:：]?\s*/, "").trim(),
+        reference: referenceLine.replace(/^참\s*조\s*[:：]?\s*/, "").trim(),
+        subject: subjectLine.replace(/^제\s*목\s*[:：]?\s*/, "").trim(),
+        body: bodyLines.slice(0, 20).join("\n"),
+        attachments: attachLine.replace(/^붙\s*임\s*[:：]?\s*/, "").trim(),
+      };
+    } else if (docType === "지출결의서") {
+      return {
+        purpose: lines.find(l => /목적|용도|내용/.test(l)) || lines[0] || "",
+        amount: (lines.find(l => /원|금액|비용/.test(l)) || "").replace(/[^0-9]/g, "") || "",
+        date: (lines.find(l => /\d{4}[.\-년]\d{1,2}[.\-월]\d{1,2}/.test(l)) || "").match(/\d{4}[.\-년]\d{1,2}[.\-월]\d{1,2}/)?.[0]?.replace(/[년월]/g, "-").replace(/일/, "").trim() || "",
+        vendor: lines.find(l => /거래처|업체|상호/.test(l)) || "",
+        detail: lines.slice(0, 5).join(" "),
+      };
+    } else {
+      // 자유양식/기타
+      return {
+        subject: lines[0] || "",
+        content: lines.slice(1, 10).join("\n"),
+      };
+    }
   } catch (e) {
-    // fallback: FileReader
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result || "");
-      reader.readAsText(file);
-    });
+    console.error("워드 파싱 오류:", e);
+    return null;
   }
-}
-
-async function parseWordToFields(file, docType) {
-  // ArrayBuffer로 읽어서 Claude API에 base64로 전달
-  const arrayBuffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  bytes.forEach(b => binary += String.fromCharCode(b));
-  const base64 = btoa(binary);
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: "워드 문서 내용을 분석해서 JSON으로만 응답하세요. 마크다운 없이 순수 JSON만.",
-      messages: [{
-        role: "user",
-        content: [{
-          type: "document",
-          source: { type: "base64", media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", data: base64 }
-        }, {
-          type: "text",
-          text: docType === "공문서"
-            ? '이 공문서에서 다음 필드를 추출해서 JSON으로 응답하세요: {"receiver": "수신처", "reference": "참조", "subject": "제목", "body": "본문내용(전체)", "attachments": "붙임 목록"}'
-            : `이 문서에서 핵심 내용을 추출해서 JSON으로 응답하세요. 문서 종류: ${docType}`
-        }]
-      }]
-    })
-  });
-  const data = await res.json();
-  const text = data.content?.map(i => i.text || "").join("") || "";
-  try {
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
-  } catch { return null; }
 }
 
 // ─── AI 문서 작성 보조 ────────────────────────────────────────
