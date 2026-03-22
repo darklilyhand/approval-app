@@ -335,16 +335,16 @@ function printDoc(doc) {
   <script>window.onload = () => window.print();</script>
   </body></html>`;
 
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const w = window.open("", "_blank");
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+  } else {
+    // 팝업 차단된 경우 현재 탭에서 열기
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    window.location.href = url;
+  }
 }
 
 // ─── 엑셀 내보내기 ───────────────────────────────────────────
@@ -931,6 +931,28 @@ function DocRow({ doc, onClick, noBorder, showActions, onAction, canView }) {
           <button onClick={() => { setShowComment(false); setPendingAction(null); setComment(""); }} style={{ padding: "8px 10px", background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>취소</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── 기관명 선택 모달 ────────────────────────────────────────────
+function OrgSelectModal({ doc, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 300, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f", marginBottom: 8 }}>📋 기관명 선택</div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>워드 문서에 표시할 기관명을 선택하세요.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {["묘한 LAB", "묘한박물관"].map(org => (
+            <button key={org} onClick={() => { exportDocToWord(doc, org); onClose(); }}
+              style={{ padding: "12px 0", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+              {org}
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ width: "100%", marginTop: 10, padding: "10px 0", background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>취소</button>
+      </div>
     </div>
   );
 }
