@@ -284,30 +284,40 @@ function printDoc(doc) {
   ).join("");
 
   const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
+
+  // 결재판: 결재라인에 있는 사람만 직함 칸에 채워넣기
   const stampCells = ROLES.map(role => {
-    const idx = (doc.approval_line||[]).findIndex(u => u.title === role || u.title.includes(role));
-    if (idx < 0) return `<td style="border:1px solid #374151;text-align:center;padding:8px 4px;min-width:60px"><div style="font-weight:700;font-size:11px;background:#1e3a5f;color:#fff;padding:3px;margin:-8px -4px 6px">${role}</div><div style="color:#e5e7eb;font-size:11px">-</div></td>`;
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
+    if (idx < 0) return `<td style="border:1px solid #2a7a8c;text-align:center;padding:0;min-width:60px"><div style="font-weight:700;font-size:11px;background:#2a7a8c;color:#fff;padding:4px 2px">${role}</div><div style="padding:20px 4px;color:#ddd;font-size:11px">-</div></td>`;
+    const u = doc.approval_line[idx];
     const st = (doc.approval_status||[])[idx];
-    const name = doc.approval_line[idx].name;
     const date = st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}).replace(". ","/").replace(".","") : "";
-    const bg = st?.status==="승인"?"#f0fdf4":st?.status==="반려"?"#fef2f2":"#fff";
-    return `<td style="border:1px solid #374151;text-align:center;padding:0;min-width:60px;background:${bg}"><div style="font-weight:700;font-size:11px;background:#1e3a5f;color:#fff;padding:3px">${role}</div><div style="padding:6px 4px"><div style="font-weight:700;font-size:12px">${name}</div>${date?`<div style="font-size:10px;color:#666;margin-top:2px">${date}</div>`:""}</div></td>`;
+    const bg = st?.status==="승인"?"#e2f5f2":st?.status==="반려"?"#fee2e2":"#fff";
+    return `<td style="border:1px solid #2a7a8c;text-align:center;padding:0;min-width:60px;background:${bg}"><div style="font-weight:700;font-size:11px;background:#2a7a8c;color:#fff;padding:4px 2px">${role}</div><div style="padding:8px 4px"><div style="font-weight:700;font-size:13px">${u.name}</div>${date?`<div style="font-size:10px;color:#666;margin-top:3px">${date}</div>`:`<div style="font-size:10px;color:#ccc;margin-top:3px">미결재</div>`}</div></td>`;
+  }).join("");
+
+  // 하단 이름줄: "직원 홍길동   대리 김철수..." 형태
+  const stampLine = ROLES.map(role => {
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
+    const name = idx >= 0 ? doc.approval_line[idx].name : "　　　";
+    return `<span style="margin-right:24px"><span style="color:#2a7a8c;font-weight:700">${role}</span> ${name}</span>`;
   }).join("");
 
   const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
   <title>${doc.title}</title>
   <style>
     body { font-family: 'Malgun Gothic', sans-serif; padding: 40px; color: #111; }
-    h1 { font-size: 22px; color: #1e3a5f; border-bottom: 3px solid #1e3a5f; padding-bottom: 10px; }
+    h1 { font-size: 22px; color: #2a7a8c; border-bottom: 3px solid #2a7a8c; padding-bottom: 10px; }
     .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
     .badge { display:inline-block; padding:3px 12px; border-radius:20px; font-weight:700; font-size:13px;
-      background:${ doc.status==="승인"?"#d1fae5":doc.status==="반려"?"#fee2e2":"#dbeafe" };
-      color:${ doc.status==="승인"?"#059669":doc.status==="반려"?"#dc2626":"#3b82f6" }; }
-    h2 { font-size: 15px; color: #374151; margin: 24px 0 10px; border-left: 4px solid #1e3a5f; padding-left: 10px; }
+      background:${ doc.status==="승인"?"#e2f5f2":doc.status==="반려"?"#fee2e2":"#e8f2fb" };
+      color:${ doc.status==="승인"?"#4db8a8":doc.status==="반려"?"#7a9ebe":"#5b9fd4" }; }
+    h2 { font-size: 14px; color: #2a7a8c; margin: 20px 0 8px; border-left: 4px solid #3ba8b8; padding-left: 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
     td, th { padding: 8px 12px; border: 1px solid #e5e7eb; }
-    th { background: #f3f4f6; font-weight: 700; text-align: left; }
-    .stamp-table { border-collapse: collapse; margin-bottom: 20px; }
+    th { background: #e8f7f9; font-weight: 700; text-align: left; color: #2a7a8c; }
+    .stamp-table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    .stamp-line { padding: 10px 0; border-top: 1px solid #2a7a8c; border-bottom: 1px solid #e5e7eb; margin: 20px 0 8px; font-size: 13px; }
     @media print { button { display: none; } }
   </style></head><body>
   <h1>📋 ${doc.title}</h1>
@@ -317,11 +327,11 @@ function printDoc(doc) {
     기안자: <strong>${doc.author_name}</strong> (${doc.author_dept} · ${doc.author_title}) &nbsp;|&nbsp;
     상태: <span class="badge">${doc.status}</span>
   </div>
-  <h2>🔖 결재판</h2><table class="stamp-table"><tr>${stampCells}</tr></table>
-  <h2>📄 기안 내용</h2>
+  <h2>기안 내용</h2>
   <table><tbody>${fieldRows}</tbody></table>
-  <h2>📚 처리 이력</h2>
+  <h2>처리 이력</h2>
   <table><thead><tr><th>처리자</th><th>액션</th><th>비고</th><th>일자</th></tr></thead><tbody>${historyRows}</tbody></table>
+  <div class="stamp-line">${stampLine}</div>
   <script>window.onload = () => window.print();</script>
   </body></html>`;
 
@@ -995,9 +1005,6 @@ function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete, 
               ))}
             </div>
           </div>
-
-          {/* 결재판 */}
-          <ApprovalStamp doc={doc} />
 
           {/* 결재라인 */}
           <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>👥 결재라인</h3>
