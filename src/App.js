@@ -741,577 +741,73 @@ function DocRow({ doc, onClick, noBorder, showActions, onAction, canView }) {
   );
 }
 
-// ─── 기관명 선택 모달 ────────────────────────────────────────────
-function OrgSelectModal({ doc, onClose }) {
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 300, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f", marginBottom: 8 }}>📋 기관명 선택</div>
-        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>워드 문서에 표시할 기관명을 선택하세요.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {["묘한 LAB", "묘한박물관"].map(org => (
-            <button key={org} onClick={() => { exportDocToWord(doc, org); onClose(); }}
-              style={{ padding: "12px 0", background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
-              {org}
-            </button>
-          ))}
-        </div>
-        <button onClick={onClose} style={{ width: "100%", marginTop: 10, padding: "10px 0", background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>취소</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── 문서 상세 모달 ───────────────────────────────────────────
-function DocDetailModal({ doc, profile, onClose, onApprove, onRecall, onDelete, onToggleSecret, canView }) {
-  const [commentMap, setCommentMap] = useState({});
-  const [showOrgModal, setShowOrgModal] = useState(false);
-  const meta = STATUS_META[doc.status] || STATUS_META["대기중"];
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1000 }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      {showOrgModal && <OrgSelectModal doc={doc} onClose={() => setShowOrgModal(false)} />}
-      <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 720, maxHeight: "92vh", overflow: "auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.2)" }}>
-        {/* 핸들 */}
-        <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 0" }}>
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#e5e7eb" }} />
-        </div>
-        {/* 헤더 */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f" }}>
-              {doc.is_secret && <span style={{ fontSize: 12, background: "#fee2e2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginRight: 6, fontWeight: 700 }}>🔒 비밀</span>}
-              {doc.title}
-            </div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>문서번호: {doc.id} · {fmtDate(doc.created_at)}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <span style={{ padding: "4px 12px", borderRadius: 20, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12 }}>{meta.icon} {doc.status}</span>
-            {doc.author_id === profile.id && (
-              <button onClick={() => onToggleSecret(doc.id, !doc.is_secret)} style={{ padding: "5px 10px", background: doc.is_secret ? "#fee2e2" : "#f3f4f6", color: doc.is_secret ? "#dc2626" : "#6b7280", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {doc.is_secret ? "🔒 비밀해제" : "🔓 비밀설정"}
-              </button>
-            )}
-            {doc.author_id === profile.id && doc.status !== "승인" && doc.status !== "회수" && (
-              <button onClick={() => {
-                if (window.confirm("기안을 회수하시겠어요?\n진행 중인 결재가 초기화됩니다.")) { onRecall(doc.id); onClose(); }
-              }} style={{ padding: "5px 10px", background: "#5b9fd4", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↩️ 회수</button>
-            )}
-            {doc.author_id === profile.id && (doc.status === "회수" || doc.status === "반려") && (
-              <button onClick={() => {
-                if (window.confirm("이 문서를 삭제하시겠어요?\n삭제 후 복구할 수 없습니다.")) { onDelete(doc.id); onClose(); }
-              }} style={{ padding: "5px 10px", background: "#7a9ebe", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ 삭제</button>
-            )}
-            <button onClick={() => { if (doc.type === "공문서") setShowOrgModal(true); else if (doc.type === "지출결의서") exportExpenseToWord(doc); else exportDocToWord(doc, "묘한 LAB"); }} style={{ padding: "5px 10px", background: "#4db8a8", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📄 워드</button>
-            <button onClick={() => printDoc(doc)} style={{ padding: "5px 10px", background: "#2a7a8c", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ PDF</button>
-            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
-          </div>
-        </div>
-
-        {!canView ? (
-          <div style={{ padding: 40, textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#dc2626", marginBottom: 8 }}>비밀문서</div>
-            <div style={{ fontSize: 14, color: "#6b7280" }}>열람 권한이 없는 문서입니다.</div>
-          </div>
-        ) : (
-        <div style={{ padding: 20 }}>
-          {/* 기안 내용 */}
-          <div style={{ background: "#f9fafb", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>📄 기안 내용</h3>
-            <div style={{ fontSize: 13 }}>
-              <div style={{ marginBottom: 6 }}><span style={{ color: "#6b7280" }}>기안자:</span> <strong>{doc.author_name}</strong> ({doc.author_dept} · {doc.author_title})</div>
-              <div style={{ marginBottom: 6 }}><span style={{ color: "#6b7280" }}>종류:</span> <strong>{doc.type}</strong></div>
-              <hr style={{ border: "none", borderTop: "1px solid #e5e7eb", margin: "10px 0" }} />
-              {TEMPLATES[doc.type]?.fields.map(f => (
-                <div key={f.key} style={{ marginBottom: 6 }}>
-                  <span style={{ color: "#6b7280" }}>{f.label}:</span>{" "}
-                  <strong>{f.key === "amount" ? fmtNum(doc.fields[f.key]) + "원" : doc.fields[f.key] || "-"}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 결재라인 */}
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>👥 결재라인</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-            {doc.approval_line?.map((u, i) => {
-              const st = doc.approval_status?.[i];
-              const stMeta = STATUS_META[st?.status] || STATUS_META["대기중"];
-              const canAct = u.id === profile.id && st?.status === "대기중" && (i === 0 || doc.approval_status?.[i - 1]?.status === "승인");
-              return (
-                <div key={u.id} style={{ background: stMeta.bg, borderRadius: 10, padding: 14, border: `1px solid ${stMeta.color}30` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{u.name}</span>
-                      <span style={{ fontSize: 12, color: "#6b7280" }}> ({u.title})</span>
-                    </div>
-                    <span style={{ padding: "3px 10px", borderRadius: 20, background: "#fff", color: stMeta.color, fontWeight: 700, fontSize: 12 }}>{stMeta.icon} {st?.status || "대기중"}</span>
-                  </div>
-                  {st?.comment && <div style={{ marginTop: 8, fontSize: 12, color: "#374151", background: "rgba(255,255,255,0.7)", padding: "6px 10px", borderRadius: 6 }}>💬 {st.comment}</div>}
-                  {st?.date && <div style={{ marginTop: 4, fontSize: 11, color: "#9ca3af" }}>{fmtDate(st.date)}</div>}
-                  {canAct && (
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                      <input value={commentMap[i] || ""} onChange={e => setCommentMap(p => ({ ...p, [i]: e.target.value }))} placeholder="의견 (선택)" style={{ flex: 1, padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12 }} />
-                      <button onClick={() => onApprove(doc.id, i, "승인", commentMap[i] || "")} style={{ padding: "7px 12px", background: "#059669", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>승인</button>
-                      <button onClick={() => onApprove(doc.id, i, "반려", commentMap[i] || "")} style={{ padding: "7px 12px", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>반려</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 첨부파일 */}
-          {doc.attachments && doc.attachments.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>📎 첨부파일</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {doc.attachments.map((f, i) => (
-                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7f9", borderRadius: 8, padding: "8px 12px", textDecoration: "none", border: "1px solid #b0d8e0" }}>
-                    <span style={{ fontSize: 16 }}>📄</span>
-                    <span style={{ fontSize: 13, color: "#2a7a8c", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{(f.size/1024).toFixed(0)}KB</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-          {/* 이력 */}
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>📚 처리 이력</h3>
-          <div style={{ background: "#f9fafb", borderRadius: 10, padding: 14 }}>
-            {doc.history?.map((h, i) => (
-              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#3b82f6", marginTop: 5, flexShrink: 0 }} />
-                <div style={{ fontSize: 13 }}>
-                  <span style={{ fontWeight: 600 }}>{h.user}</span>
-                  <span style={{ color: "#6b7280" }}> · {h.action}</span>
-                  {h.note && <span> — {h.note}</span>}
-                  <div style={{ fontSize: 11, color: "#9ca3af" }}>{fmtDate(h.date)}</div>
-                </div>
-              </div>
-            ))}
-            {(!doc.history || doc.history.length === 0) && <div style={{ color: "#9ca3af", fontSize: 13 }}>이력 없음</div>}
-          </div>
-        </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── 결재판 컴포넌트 ─────────────────────────────────────────
-function ApprovalStamp({ doc }) {
+// ─── 워드/공문서 출력 (새 창 HTML) ──────────────────────────────
+function exportDocToWord(doc, orgName) {
   const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
-  const line = doc.approval_line || [];
-  const status = doc.approval_status || [];
-
-  // 결재라인을 ROLES 순서에 맞게 매핑
-  const stamps = ROLES.map(role => {
-    const idx = line.findIndex(u => u.title === role || u.title.includes(role));
-    if (idx < 0) {
-      // 결재라인에 없는 직급은 빈칸
-      return { role, name: "", date: "", status: "없음" };
-    }
-    const st = status[idx];
-    return {
-      role,
-      name: line[idx].name,
-      date: st?.date ? new Date(st.date).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" }).replace(". ", "/").replace(".", "") : "",
-      status: st?.status || "대기중",
-    };
-  });
-
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>🔖 결재판</h3>
-      <div style={{ display: "flex", border: "1.5px solid #374151", borderRadius: 4, overflow: "hidden", fontSize: 12 }}>
-        {stamps.map((s, i) => (
-          <div key={i} style={{
-            flex: 1, borderRight: i < stamps.length - 1 ? "1px solid #374151" : "none",
-            display: "flex", flexDirection: "column", minWidth: 0,
-          }}>
-            {/* 직급 */}
-            <div style={{ background: "linear-gradient(135deg,#2a7a8c,#3ba8b8)", color: "#fff", textAlign: "center", padding: "4px 2px", fontSize: 11, fontWeight: 700 }}>{s.role}</div>
-            {/* 이름 + 날짜 영역 */}
-            <div style={{
-              minHeight: 52, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              padding: "6px 2px", background: s.status === "승인" ? "#f0fdf4" : s.status === "반려" ? "#fef2f2" : "#fff",
-              position: "relative",
-            }}>
-              {s.name ? (
-                <>
-                  {s.status === "승인" && (
-                    <div style={{ position: "absolute", top: 2, right: 3, fontSize: 9, color: "#059669", fontWeight: 700 }}>✓</div>
-                  )}
-                  {s.status === "반려" && (
-                    <div style={{ position: "absolute", top: 2, right: 3, fontSize: 9, color: "#dc2626", fontWeight: 700 }}>✗</div>
-                  )}
-                  <div style={{ fontWeight: 700, fontSize: 12, textAlign: "center", color: "#111" }}>{s.name}</div>
-                  {s.date && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 3 }}>{s.date}</div>}
-                  {!s.date && s.status === "대기중" && <div style={{ fontSize: 10, color: "#d1d5db", marginTop: 3 }}>미결재</div>}
-                </>
-              ) : (
-                <div style={{ fontSize: 10, color: "#e5e7eb" }}>-</div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── 기안 작성 모달 ───────────────────────────────────────────
-function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
-  const [step, setStep] = useState(1);
-  const [docType, setDocType] = useState("지출결의서");
-  const [fields, setFields] = useState({});
-  const [selectedApprovers, setSelectedApprovers] = useState([]);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [wordLoading, setWordLoading] = useState(false);
-  const [attachments, setAttachments] = useState([]); // { name, url, size }
-  const [uploading, setUploading] = useState(false);
-
-  const setField = (k, v) => setFields(p => ({ ...p, [k]: v }));
-
-  const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    // input 초기화 (같은 파일 재업로드 가능하게)
-    e.target.value = "";
-    setUploading(true);
-    const uploaded = [];
-    try {
-      for (const file of files) {
-        try {
-          const ext = file.name.split(".").pop();
-          const path = "attachments/" + Date.now() + "_" + Math.random().toString(36).slice(2) + "." + ext;
-          const { error } = await supabase.storage.from("documents").upload(path, file);
-          if (!error) {
-            const { data } = supabase.storage.from("documents").getPublicUrl(path);
-            uploaded.push({ name: file.name, url: data.publicUrl, size: file.size });
-          } else {
-            uploaded.push({ name: file.name, url: "", size: file.size, local: true });
-          }
-        } catch {
-          uploaded.push({ name: file.name, url: "", size: file.size, local: true });
-        }
-      }
-      setAttachments(prev => [...prev, ...uploaded]);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removeAttachment = (idx) => setAttachments(prev => prev.filter((_, i) => i !== idx));
-
-  const handleAI = async () => {
-    setAiLoading(true);
-    const fieldKeys = TEMPLATES[docType].fields.map(f => f.key).join(", ");
-    const result = await callClaude(`${docType} 샘플 문서를 JSON으로만 작성하세요. 키: ${fieldKeys}. 한국어로 현실적으로, 금액은 숫자만.`);
-    if (result) setFields(result);
-    setAiLoading(false);
-  };
-
-  // 결재라인 후보: 본인 제외, level 높은 순
-  const approverCandidates = allProfiles
-    .filter(p => p.id !== profile.id)
-    .sort((a, b) => b.level - a.level);
-
-  const toggleApprover = (p) => {
-    setSelectedApprovers(prev =>
-      prev.find(x => x.id === p.id) ? prev.filter(x => x.id !== p.id) : [...prev, p]
-    );
-  };
-
-  // 선택된 결재자를 level 오름차순 정렬
-  const sortedApprovers = [...selectedApprovers].sort((a, b) => a.level - b.level);
-
-  const handleSubmit = () => {
-    if (sortedApprovers.length === 0) { alert("결재자를 1명 이상 선택하세요."); return; }
-    const titleMap = { 지출결의서: fields.purpose || "지출결의", 휴가신청서: fields.vacationType || "휴가", 업무보고서: fields.period || "업무보고", 자유양식: fields.subject || "문서" };
-    const approvalLine = sortedApprovers.map(p => ({ id: p.id, name: p.name, title: p.title, dept: p.dept }));
-    const doc = {
-      id: genId(), type: docType,
-      title: `[${docType}] ${titleMap[docType] || "문서"}`,
-      author_id: profile.id, author_name: profile.name,
-      author_dept: profile.dept, author_title: profile.title,
-      status: "대기중",
-      approval_line: approvalLine,
-      approval_status: approvalLine.map(() => ({ status: "대기중", comment: "", date: null })),
-      fields,
-      history: [{ action: "기안 제출", user: profile.name, date: today(), note: "" }],
-      ...(attachments.length > 0 ? { attachments } : {}),
-    };
-    onSubmit(doc);
-  };
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1000 }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 600, maxHeight: "92vh", overflow: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 0" }}>
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#e5e7eb" }} />
-        </div>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f" }}>✏️ 기안 작성</h2>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5e7eb", border: "none", cursor: "pointer", fontSize: 16 }}>×</button>
-        </div>
-
-        {/* 스텝 */}
-        <div style={{ padding: "14px 20px 0", display: "flex", gap: 6 }}>
-          {["문서 선택", "내용 작성", "결재라인"].map((s, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: step > i + 1 ? "#10b981" : step === i + 1 ? "#3b82f6" : "#e5e7eb", color: step >= i + 1 ? "#fff" : "#9ca3af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{step > i + 1 ? "✓" : i + 1}</div>
-              <span style={{ fontSize: 12, color: step === i + 1 ? "#3b82f6" : "#9ca3af", fontWeight: step === i + 1 ? 700 : 400 }}>{s}</span>
-              {i < 2 && <span style={{ color: "#d1d5db", fontSize: 12 }}>›</span>}
-            </div>
-          ))}
-        </div>
-
-        <div style={{ padding: 20 }}>
-          {/* STEP 1 */}
-          {step === 1 && (
-            <div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                {Object.keys(TEMPLATES).map(t => (
-                  <button key={t} onClick={() => { setDocType(t); setFields({}); setWordLoading(false); }} style={{ padding: 14, border: `2px solid ${docType === t ? "#3b82f6" : "#e5e7eb"}`, borderRadius: 10, background: docType === t ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left" }}>
-                    <div style={{ fontSize: 22, marginBottom: 4 }}>{({ 지출결의서: "💰", 휴가신청서: "🏖️", 업무보고서: "📊", 자유양식: "📝", 공문서: "📮" })[t]}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: docType === t ? "#3b82f6" : "#111827" }}>{t}</div>
-                  </button>
-                ))}
-              </div>
-              {/* 워드 파일 업로드 */}
-              <div style={{ background: "#f0fdf4", border: "2px dashed #86efac", borderRadius: 10, padding: 14, marginBottom: 14, textAlign: "center" }}>
-                <div style={{ fontSize: 13, color: "#059669", fontWeight: 700, marginBottom: 8 }}>📄 워드 파일로 자동 작성</div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>.docx 파일을 올리면 내용을 자동으로 채워드려요!</div>
-                <label style={{ display: "inline-block", padding: "8px 16px", background: "#059669", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
-                  {wordLoading ? "⏳ 분석 중..." : "📂 파일 선택"}
-                  <input type="file" accept=".docx" style={{ display: "none" }} onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    e.target.value = "";
-                    setWordLoading(true);
-                    try {
-                      const result = await parseWordToFields(file, docType);
-                      if (result) { setFields(result); setStep(2); }
-                      else alert("파일 분석에 실패했어요. 다시 시도해주세요.");
-                    } catch {
-                      alert("파일을 읽는 중 오류가 발생했어요.");
-                    } finally {
-                      setWordLoading(false);
-                    }
-                  }} />
-                </label>
-              </div>
-              <button onClick={() => setStep(2)} style={{ width: "100%", padding: 12, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>직접 입력 →</button>
-            </div>
-          )}
-
-          {/* STEP 2 */}
-          {step === 2 && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <span style={{ fontSize: 14, color: "#6b7280" }}>{docType} 내용 입력</span>
-                <button onClick={handleAI} disabled={aiLoading} style={{ padding: "7px 12px", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: aiLoading ? "not-allowed" : "pointer", opacity: aiLoading ? 0.7 : 1 }}>
-                  {aiLoading ? "⏳ 작성 중..." : "✨ AI 자동 작성"}
-                </button>
-              </div>
-              {TEMPLATES[docType].fields.map(f => (
-                <div key={f.key} style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>{f.label}</label>
-                  {f.type === "textarea" ? (
-                    <textarea value={fields[f.key] || ""} onChange={e => setField(f.key, e.target.value)} rows={3} style={{ width: "100%", padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, resize: "vertical", outline: "none", boxSizing: "border-box" }} />
-                  ) : f.type === "select" ? (
-                    <select value={fields[f.key] || ""} onChange={e => setField(f.key, e.target.value)} style={{ width: "100%", padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, background: "#fff" }}>
-                      <option value="">선택하세요</option>
-                      {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  ) : (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <input type={f.type} value={fields[f.key] || ""} onChange={e => setField(f.key, e.target.value)} placeholder={f.placeholder || ""} style={{ flex: 1, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, outline: "none" }} />
-                      {f.suffix && <span style={{ fontSize: 13, color: "#6b7280", alignSelf: "center" }}>{f.suffix}</span>}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {/* 첨부파일 업로드 */}
-              <div style={{ marginTop: 14, background: "#e8f7f9", borderRadius: 10, padding: 14, border: "2px dashed #3ba8b8" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#2a7a8c" }}>📎 첨부파일</div>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "#2a7a8c", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
-                    {uploading ? "⏳ 업로드 중..." : "＋ 파일 추가"}
-                    <input type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
-                  </label>
-                </div>
-                <div style={{ fontSize: 12, color: "#5b9fd4", marginBottom: 6 }}>모든 파일 형식 가능 (이미지, PDF, 엑셀, 워드 등)</div>
-                {attachments.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "10px 0", color: "#9ca3af", fontSize: 12 }}>첨부파일이 없어요</div>
-                )}
-                {attachments.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                    {attachments.map((f, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", borderRadius: 6, padding: "7px 10px", border: "1px solid #b0d8e0" }}>
-                        <span style={{ fontSize: 16 }}>📄</span>
-                        <span style={{ fontSize: 12, color: "#2a7a8c", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                        <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>{(f.size/1024).toFixed(0)}KB</span>
-                        <button onClick={() => removeAttachment(i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, padding: 0, flexShrink: 0 }}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                <button onClick={() => setStep(1)} style={{ flex: 1, padding: 12, background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>← 이전</button>
-                <button onClick={() => setStep(3)} style={{ flex: 2, padding: 12, background: "#3ba8b8", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3 */}
-          {step === 3 && (
-            <div>
-              <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>결재자를 선택하세요. (복수 선택 가능, level 순 자동 정렬)</p>
-              {/* 전결 빠른 선택 */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", marginBottom: 8 }}>⚡ 소장 전결 (빠른 선택)</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {allProfiles.filter(p => p.title === "소장").map(p => (
-                    <button key={p.id} onClick={() => setSelectedApprovers([p])} style={{ padding: "7px 14px", borderRadius: 8, border: `2px solid ${selectedApprovers.length === 1 && selectedApprovers[0].id === p.id ? "#7c3aed" : "#e5e7eb"}`, background: selectedApprovers.length === 1 && selectedApprovers[0].id === p.id ? "#f5f3ff" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>
-                      👑 {p.name} 소장
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {/* 전체 결재자 목록 */}
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>직접 선택</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, maxHeight: 220, overflowY: "auto" }}>
-                {approverCandidates.map(p => {
-                  const isSelected = !!selectedApprovers.find(x => x.id === p.id);
-                  return (
-                    <button key={p.id} onClick={() => toggleApprover(p)} style={{ padding: "11px 14px", border: `2px solid ${isSelected ? "#3b82f6" : "#e5e7eb"}`, borderRadius: 10, background: isSelected ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: isSelected ? "#3b82f6" : "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", color: isSelected ? "#fff" : "#9ca3af", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{isSelected ? "✓" : p.name[0]}</div>
-                      <div>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: isSelected ? "#3b82f6" : "#111827" }}>{p.name}</span>
-                        <span style={{ fontSize: 12, color: "#6b7280", marginLeft: 6 }}>{p.dept} · {p.title}</span>
-                      </div>
-                      {p.title === "소장" && <span style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px", background: "#d6f0f4", color: "#2a8a9c", borderRadius: 20, fontWeight: 700 }}>소장</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              {/* 선택된 결재라인 미리보기 */}
-              {sortedApprovers.length > 0 && (
-                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#059669", marginBottom: 6 }}>✅ 결재라인 미리보기</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {sortedApprovers.map((p, i) => (
-                      <span key={p.id} style={{ fontSize: 13, color: "#374151" }}>{i > 0 ? "→ " : ""}<strong>{p.name}</strong> ({p.title})</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => setStep(2)} style={{ flex: 1, padding: 12, background: "#e5e7eb", color: "#374151", border: "none", borderRadius: 10, fontWeight: 700, cursor: "pointer" }}>← 이전</button>
-                <button onClick={handleSubmit} style={{ flex: 2, padding: 12, background: "linear-gradient(135deg,#059669,#10b981)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>📤 결재 상신</button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ msg }) {
-  return <div style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 14 }}>📭 {msg}</div>;
-}// ─── 워드/공문서 HTML 출력 (새 창) ──────────────────────────────
-function buildDocHtml(doc, orgName) {
-  const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
-  const fields = (window._TEMPLATES || {})[doc.type]?.fields || [];
-
-  const stampLine = ROLES.map(role => {
-    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
-    const name = idx >= 0 ? doc.approval_line[idx].name : "　　　";
-    return `<span style="margin-right:20px"><b style="color:#1e3a5f">${role}</b> ${name}</span>`;
-  }).join("");
-
   const ORG = {
     "묘한 LAB":   { name:"묘한 LAB",   addr:"(03132) 서울특별시 종로구 삼일대로 30길 21, 203호", tel:"02-764-7894", fax:"02-764-7891", email:"precuratorkp@gmail.com", web:"http://www.pmuseums.org" },
     "묘한박물관": { name:"묘한박물관", addr:"(03132) 서울특별시 종로구 삼일대로 30길 21, 203호", tel:"02-764-7894", fax:"02-764-7891", email:"precuratorkp@gmail.com", web:"http://www.pmuseums.org" },
   };
   const org = ORG[orgName] || ORG["묘한 LAB"];
   const docDate = new Date(doc.created_at).toLocaleDateString("ko-KR", {year:"numeric",month:"long",day:"numeric"});
+  const stampLine = ROLES.map(role => {
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
+    const name = idx >= 0 ? doc.approval_line[idx].name : "　　　";
+    return `<span style="margin-right:20px"><b style="color:#1e3a5f">${role}</b> ${name}</span>`;
+  }).join("");
 
   let bodyHtml = "";
   if (doc.type === "공문서") {
-    bodyHtml = `
-      <table class="ct"><tbody>
-        <tr><td class="lb">수 신</td><td>${doc.fields.receiver||""}</td></tr>
-        <tr><td class="lb">참 조</td><td>${doc.fields.reference||""}</td></tr>
-        <tr><td class="lb">제 목</td><td><b>${doc.fields.subject||""}</b></td></tr>
-        <tr><td colspan="2" style="padding:16px;line-height:2;white-space:pre-wrap">${doc.fields.body||""}</td></tr>
-        ${doc.fields.attachments?`<tr><td class="lb">붙 임</td><td style="white-space:pre-wrap">${doc.fields.attachments}</td></tr>`:""}
-      </tbody></table>`;
-  } else {
-    const TMPLS = { 지출결의서:[{k:"purpose",l:"지출 목적"},{k:"amount",l:"지출 금액",fmt:v=>Number(v||0).toLocaleString("ko-KR")+"원"},{k:"date",l:"지출 일자"},{k:"vendor",l:"거래처"},{k:"detail",l:"상세 내역"}], 휴가신청서:[{k:"vacationType",l:"휴가 종류"},{k:"startDate",l:"시작일"},{k:"endDate",l:"종료일"},{k:"reason",l:"사유"},{k:"contact",l:"비상연락처"}], 업무보고서:[{k:"period",l:"보고 기간"},{k:"completed",l:"완료 업무"},{k:"inProgress",l:"진행 중"},{k:"planned",l:"예정 업무"},{k:"issues",l:"이슈"}], 자유양식:[{k:"subject",l:"제목"},{k:"content",l:"내용"}] };
-    const rows = (TMPLS[doc.type]||[]).map(f=>`<tr><td class="lb">${f.l}</td><td style="white-space:pre-wrap">${f.fmt?f.fmt(doc.fields[f.k]):(doc.fields[f.k]||"-")}</td></tr>`).join("");
-    bodyHtml = `<table class="ct"><tbody>${rows}</tbody></table>`;
+    bodyHtml = `<table class="ct"><tbody>
+      <tr><td class="lb">수 신</td><td>${doc.fields.receiver||""}</td></tr>
+      <tr><td class="lb">참 조</td><td>${doc.fields.reference||""}</td></tr>
+      <tr><td class="lb">제 목</td><td><b>${doc.fields.subject||""}</b></td></tr>
+      <tr><td colspan="2" style="padding:16px;line-height:2;white-space:pre-wrap">${doc.fields.body||""}</td></tr>
+      ${doc.fields.attachments?`<tr><td class="lb">붙 임</td><td style="white-space:pre-wrap">${doc.fields.attachments}</td></tr>`:""}
+    </tbody></table>`;
   }
 
-  return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
+  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
 <style>
-  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;padding:50px 60px;font-size:13px;color:#111;max-width:800px;margin:0 auto}
+  body{font-family:"맑은 고딕","Malgun Gothic",sans-serif;padding:50px 60px;font-size:13px;color:#111;max-width:800px;margin:0 auto}
   .org{font-size:28px;font-weight:900;color:#1e3a5f;text-align:center;padding-bottom:8px;border-bottom:3px solid #1e3a5f;margin-bottom:30px}
   .meta{text-align:center;font-size:12px;color:#666;margin-bottom:28px}
   .ct{width:100%;border-collapse:collapse;margin-bottom:20px}
   .ct td{padding:8px 12px;border:1px solid #b0d8e0;font-size:13px;line-height:1.7}
   .lb{width:90px;background:#e8f7f9;font-weight:700;color:#1e3a5f}
   .sig{text-align:center;margin:32px 0 16px;font-size:14px}
-  .stamp{padding:10px 0;border-top:2px solid #1e3a5f;border-bottom:1px solid #ccc;margin:24px 0 4px;font-size:13px}
-  .foot{font-size:11px;color:#666;line-height:1.9;border-top:1px solid #ccc;padding-top:10px;margin-top:8px}
-  .no-print{background:#2a7a8c;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;font-size:13px}
-  .no-print button{background:#fff;color:#2a7a8c;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer}
-  @media print{.no-print{display:none}}
+  .stamp{padding:10px 0;border-top:2px solid #1e3a5f;border-bottom:1px solid #ccc;margin:24px 0;font-size:13px}
+  .foot{font-size:11px;color:#666;line-height:1.9;border-top:1px solid #ccc;padding-top:10px}
+  .noprint{background:#2a7a8c;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;font-size:13px}
+  .noprint button{background:#fff;color:#2a7a8c;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer}
+  @media print{.noprint{display:none}}
 </style></head><body>
-<div class="no-print">
-  <span>📄 인쇄하거나 PDF로 저장하세요</span>
-  <button onclick="window.print()">🖨️ 인쇄 / PDF 저장</button>
-</div>
+<div class="noprint"><span>인쇄하거나 PDF로 저장하세요</span><button onclick="window.print()">🖨️ 인쇄 / PDF 저장</button></div>
 <div class="org">${org.name}</div>
-<div class="meta">문서번호: <b>${doc.id}</b> &nbsp;|&nbsp; 기안일: <b>${docDate}</b> &nbsp;|&nbsp; 기안자: <b>${doc.author_name}</b> (${doc.author_dept}·${doc.author_title})</div>
+<div class="meta">문서번호: <b>${doc.id}</b> | 기안일: <b>${docDate}</b> | 기안자: <b>${doc.author_name}</b> (${doc.author_dept})</div>
 ${bodyHtml}
 <div class="sig">${docDate}<br><br><b>${org.name} 소장 &nbsp; ${doc.author_name}</b></div>
 <div class="stamp">${stampLine}</div>
-<div class="foot">
-  시행: ${org.name} ${doc.id} &nbsp;(${docDate})<br>
-  주소: ${org.addr}<br>
-  전화: ${org.tel} / 팩스: ${org.fax}<br>
-  이메일: ${org.email} / 홈페이지: ${org.web}
-</div>
+<div class="foot">시행: ${org.name} ${doc.id} (${docDate})<br>주소: ${org.addr}<br>전화: ${org.tel} / 팩스: ${org.fax}<br>이메일: ${org.email} / 홈페이지: ${org.web}</div>
 </body></html>`;
-}
 
-function exportDocToWord(doc, orgName) {
-  const html = buildDocHtml(doc, orgName || "묘한 LAB");
   const w = window.open("", "_blank");
   if (w) { w.document.write(html); w.document.close(); }
 }
 
-// ─── 지출결의서 출력 (새 창) ─────────────────────────────────────
+// ─── 지출결의서 출력 (새 창 HTML) ────────────────────────────────
 function exportExpenseToWord(doc) {
   const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
+  const docDate = new Date(doc.created_at).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"});
   const stampLine = ROLES.map(role => {
     const idx = (doc.approval_line||[]).findIndex(u => u.title === role);
     const name = idx >= 0 ? doc.approval_line[idx].name : "　　　";
     return `<span style="margin-right:20px"><b style="color:#1e3a5f">${role}</b> ${name}</span>`;
   }).join("");
-  const docDate = new Date(doc.created_at).toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"});
+
   const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
 <style>
-  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;padding:50px 60px;font-size:13px;color:#111;max-width:700px;margin:0 auto}
+  body{font-family:"맑은 고딕","Malgun Gothic",sans-serif;padding:50px 60px;font-size:13px;color:#111;max-width:700px;margin:0 auto}
   h1{font-size:24px;font-weight:900;color:#1e3a5f;text-align:center;padding-bottom:8px;border-bottom:3px solid #1e3a5f;letter-spacing:4px;margin-bottom:24px}
   .meta{text-align:center;font-size:12px;color:#666;margin-bottom:24px}
   table{width:100%;border-collapse:collapse;margin-bottom:20px}
@@ -1319,13 +815,13 @@ function exportExpenseToWord(doc) {
   .lb{width:120px;background:#e8f7f9;font-weight:700;color:#1e3a5f}
   .sig{text-align:center;margin:32px 0 16px;font-size:14px}
   .stamp{padding:10px 0;border-top:2px solid #1e3a5f;border-bottom:1px solid #ccc;margin:24px 0;font-size:13px}
-  .no-print{background:#2a7a8c;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
-  .no-print button{background:#fff;color:#2a7a8c;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px}
-  @media print{.no-print{display:none}}
+  .noprint{background:#2a7a8c;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+  .noprint button{background:#fff;color:#2a7a8c;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px}
+  @media print{.noprint{display:none}}
 </style></head><body>
-<div class="no-print"><span>📄 인쇄하거나 PDF로 저장하세요</span><button onclick="window.print()">🖨️ 인쇄 / PDF 저장</button></div>
+<div class="noprint"><span>인쇄하거나 PDF로 저장하세요</span><button onclick="window.print()">🖨️ 인쇄 / PDF 저장</button></div>
 <h1>지 출 결 의 서</h1>
-<div class="meta">문서번호: <b>${doc.id}</b> &nbsp;|&nbsp; 기안일: <b>${docDate}</b> &nbsp;|&nbsp; 기안자: <b>${doc.author_name}</b></div>
+<div class="meta">문서번호: <b>${doc.id}</b> | 기안일: <b>${docDate}</b> | 기안자: <b>${doc.author_name}</b></div>
 <table><tbody>
   <tr><td class="lb">지출 목적</td><td>${doc.fields.purpose||"-"}</td></tr>
   <tr><td class="lb">지출 금액</td><td><b>${Number(doc.fields.amount||0).toLocaleString("ko-KR")}원</b></td></tr>
@@ -1336,6 +832,7 @@ function exportExpenseToWord(doc) {
 <div class="sig">${docDate}<br><br><b>${doc.author_dept} ${doc.author_title} &nbsp; ${doc.author_name}</b></div>
 <div class="stamp">${stampLine}</div>
 </body></html>`;
+
   const w = window.open("", "_blank");
   if (w) { w.document.write(html); w.document.close(); }
 }
