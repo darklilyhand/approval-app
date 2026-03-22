@@ -36,6 +36,15 @@ const TEMPLATES = {
       { key: "content", label: "내용", type: "textarea" },
     ],
   },
+  공문서: {
+    fields: [
+      { key: "receiver", label: "수신", type: "text", placeholder: "예: 한국사립박물관협회장" },
+      { key: "reference", label: "참조", type: "text", placeholder: "예: 사업 담당자" },
+      { key: "subject", label: "제목", type: "text" },
+      { key: "body", label: "본문 내용", type: "textarea" },
+      { key: "attachments", label: "붙임", type: "textarea", placeholder: "예: 붙임 1. 서류전형 평정표" },
+    ],
+  },
 };
 
 const STATUS_META = {
@@ -77,6 +86,17 @@ function printDoc(doc) {
     `<tr><td>${h.user}</td><td>${h.action}</td><td>${h.note || "-"}</td><td>${h.date ? new Date(h.date).toLocaleDateString("ko-KR") : "-"}</td></tr>`
   ).join("");
 
+  const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
+  const stampCells = ROLES.map(role => {
+    const idx = (doc.approval_line||[]).findIndex(u => u.title === role || u.title.includes(role));
+    if (idx < 0) return `<td style="border:1px solid #374151;text-align:center;padding:8px 4px;min-width:60px"><div style="font-weight:700;font-size:11px;background:#1e3a5f;color:#fff;padding:3px;margin:-8px -4px 6px">${role}</div><div style="color:#e5e7eb;font-size:11px">-</div></td>`;
+    const st = (doc.approval_status||[])[idx];
+    const name = doc.approval_line[idx].name;
+    const date = st?.date ? new Date(st.date).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"}).replace(". ","/").replace(".","") : "";
+    const bg = st?.status==="승인"?"#f0fdf4":st?.status==="반려"?"#fef2f2":"#fff";
+    return `<td style="border:1px solid #374151;text-align:center;padding:0;min-width:60px;background:${bg}"><div style="font-weight:700;font-size:11px;background:#1e3a5f;color:#fff;padding:3px">${role}</div><div style="padding:6px 4px"><div style="font-weight:700;font-size:12px">${name}</div>${date?`<div style="font-size:10px;color:#666;margin-top:2px">${date}</div>`:""}</div></td>`;
+  }).join("");
+
   const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
   <title>${doc.title}</title>
   <style>
@@ -90,6 +110,7 @@ function printDoc(doc) {
     table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
     td, th { padding: 8px 12px; border: 1px solid #e5e7eb; }
     th { background: #f3f4f6; font-weight: 700; text-align: left; }
+    .stamp-table { border-collapse: collapse; margin-bottom: 20px; }
     @media print { button { display: none; } }
   </style></head><body>
   <h1>📋 ${doc.title}</h1>
@@ -99,6 +120,7 @@ function printDoc(doc) {
     기안자: <strong>${doc.author_name}</strong> (${doc.author_dept} · ${doc.author_title}) &nbsp;|&nbsp;
     상태: <span class="badge">${doc.status}</span>
   </div>
+  <h2>🔖 결재판</h2><table class="stamp-table"><tr>${stampCells}</tr></table>
   <h2>📄 기안 내용</h2>
   <table><tbody>${fieldRows}</tbody></table>
   <h2>👥 결재라인</h2>
@@ -139,6 +161,59 @@ function exportExcel(docs) {
   const a = document.createElement("a");
   a.href = url; a.download = `결재문서_${new Date().toLocaleDateString("ko-KR").replace(/\. /g,"-").replace(".","")}.csv`;
   a.click(); URL.revokeObjectURL(url);
+}
+
+// ─── 워드 파일 파싱 (mammoth 사용) ──────────────────────────────
+async function parseWordFile(file) {
+  try {
+    const mammoth = await import("https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js");
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value || "";
+  } catch (e) {
+    // fallback: FileReader
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result || "");
+      reader.readAsText(file);
+    });
+  }
+}
+
+async function parseWordToFields(file, docType) {
+  // ArrayBuffer로 읽어서 Claude API에 base64로 전달
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  bytes.forEach(b => binary += String.fromCharCode(b));
+  const base64 = btoa(binary);
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      system: "워드 문서 내용을 분석해서 JSON으로만 응답하세요. 마크다운 없이 순수 JSON만.",
+      messages: [{
+        role: "user",
+        content: [{
+          type: "document",
+          source: { type: "base64", media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", data: base64 }
+        }, {
+          type: "text",
+          text: docType === "공문서"
+            ? '이 공문서에서 다음 필드를 추출해서 JSON으로 응답하세요: {"receiver": "수신처", "reference": "참조", "subject": "제목", "body": "본문내용(전체)", "attachments": "붙임 목록"}'
+            : `이 문서에서 핵심 내용을 추출해서 JSON으로 응답하세요. 문서 종류: ${docType}`
+        }]
+      }]
+    })
+  });
+  const data = await res.json();
+  const text = data.content?.map(i => i.text || "").join("") || "";
+  try {
+    return JSON.parse(text.replace(/\`\`\`json|\`\`\`/g, "").trim());
+  } catch { return null; }
 }
 
 // ─── AI 문서 작성 보조 ────────────────────────────────────────
@@ -635,6 +710,9 @@ function DocDetailModal({ doc, profile, onClose, onApprove }) {
             </div>
           </div>
 
+          {/* 결재판 */}
+          <ApprovalStamp doc={doc} />
+
           {/* 결재라인 */}
           <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>👥 결재라인</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
@@ -687,6 +765,68 @@ function DocDetailModal({ doc, profile, onClose, onApprove }) {
   );
 }
 
+// ─── 결재판 컴포넌트 ─────────────────────────────────────────
+function ApprovalStamp({ doc }) {
+  const ROLES = ["직원", "대리", "과장", "팀장", "실장", "관장"];
+  const line = doc.approval_line || [];
+  const status = doc.approval_status || [];
+
+  // 결재라인을 ROLES 순서에 맞게 매핑
+  const stamps = ROLES.map(role => {
+    const idx = line.findIndex(u => u.title === role || u.title.includes(role));
+    if (idx < 0) {
+      // 결재라인에 없는 직급은 빈칸
+      return { role, name: "", date: "", status: "없음" };
+    }
+    const st = status[idx];
+    return {
+      role,
+      name: line[idx].name,
+      date: st?.date ? new Date(st.date).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" }).replace(". ", "/").replace(".", "") : "",
+      status: st?.status || "대기중",
+    };
+  });
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 10 }}>🔖 결재판</h3>
+      <div style={{ display: "flex", border: "1.5px solid #374151", borderRadius: 4, overflow: "hidden", fontSize: 12 }}>
+        {stamps.map((s, i) => (
+          <div key={i} style={{
+            flex: 1, borderRight: i < stamps.length - 1 ? "1px solid #374151" : "none",
+            display: "flex", flexDirection: "column", minWidth: 0,
+          }}>
+            {/* 직급 */}
+            <div style={{ background: "#1e3a5f", color: "#fff", textAlign: "center", padding: "4px 2px", fontSize: 11, fontWeight: 700 }}>{s.role}</div>
+            {/* 이름 + 날짜 영역 */}
+            <div style={{
+              minHeight: 52, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              padding: "6px 2px", background: s.status === "승인" ? "#f0fdf4" : s.status === "반려" ? "#fef2f2" : "#fff",
+              position: "relative",
+            }}>
+              {s.name ? (
+                <>
+                  {s.status === "승인" && (
+                    <div style={{ position: "absolute", top: 2, right: 3, fontSize: 9, color: "#059669", fontWeight: 700 }}>✓</div>
+                  )}
+                  {s.status === "반려" && (
+                    <div style={{ position: "absolute", top: 2, right: 3, fontSize: 9, color: "#dc2626", fontWeight: 700 }}>✗</div>
+                  )}
+                  <div style={{ fontWeight: 700, fontSize: 12, textAlign: "center", color: "#111" }}>{s.name}</div>
+                  {s.date && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 3 }}>{s.date}</div>}
+                  {!s.date && s.status === "대기중" && <div style={{ fontSize: 10, color: "#d1d5db", marginTop: 3 }}>미결재</div>}
+                </>
+              ) : (
+                <div style={{ fontSize: 10, color: "#e5e7eb" }}>-</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── 기안 작성 모달 ───────────────────────────────────────────
 function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
   const [step, setStep] = useState(1);
@@ -694,6 +834,7 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
   const [fields, setFields] = useState({});
   const [selectedApprovers, setSelectedApprovers] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [wordLoading, setWordLoading] = useState(false);
 
   const setField = (k, v) => setFields(p => ({ ...p, [k]: v }));
 
@@ -762,15 +903,32 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
           {/* STEP 1 */}
           {step === 1 && (
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
                 {Object.keys(TEMPLATES).map(t => (
-                  <button key={t} onClick={() => { setDocType(t); setFields({}); }} style={{ padding: 14, border: `2px solid ${docType === t ? "#3b82f6" : "#e5e7eb"}`, borderRadius: 10, background: docType === t ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left" }}>
-                    <div style={{ fontSize: 22, marginBottom: 4 }}>{({ 지출결의서: "💰", 휴가신청서: "🏖️", 업무보고서: "📊", 자유양식: "📝" })[t]}</div>
+                  <button key={t} onClick={() => { setDocType(t); setFields({}); setWordLoading(false); }} style={{ padding: 14, border: `2px solid ${docType === t ? "#3b82f6" : "#e5e7eb"}`, borderRadius: 10, background: docType === t ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left" }}>
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>{({ 지출결의서: "💰", 휴가신청서: "🏖️", 업무보고서: "📊", 자유양식: "📝", 공문서: "📮" })[t]}</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: docType === t ? "#3b82f6" : "#111827" }}>{t}</div>
                   </button>
                 ))}
               </div>
-              <button onClick={() => setStep(2)} style={{ marginTop: 16, width: "100%", padding: 12, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>다음 →</button>
+              {/* 워드 파일 업로드 */}
+              <div style={{ background: "#f0fdf4", border: "2px dashed #86efac", borderRadius: 10, padding: 14, marginBottom: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 13, color: "#059669", fontWeight: 700, marginBottom: 8 }}>📄 워드 파일로 자동 작성</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>.docx 파일을 올리면 내용을 자동으로 채워드려요!</div>
+                <label style={{ display: "inline-block", padding: "8px 16px", background: "#059669", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                  {wordLoading ? "⏳ 분석 중..." : "📂 파일 선택"}
+                  <input type="file" accept=".docx" style={{ display: "none" }} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setWordLoading(true);
+                    const result = await parseWordToFields(file, docType);
+                    if (result) { setFields(result); setStep(2); }
+                    else alert("파일 분석에 실패했어요. 다시 시도해주세요.");
+                    setWordLoading(false);
+                  }} />
+                </label>
+              </div>
+              <button onClick={() => setStep(2)} style={{ width: "100%", padding: 12, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>직접 입력 →</button>
             </div>
           )}
 
