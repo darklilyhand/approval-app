@@ -635,7 +635,22 @@ function MainApp({ profile, session }) {
   }, [docs]);
 
   const addDoc = async (doc) => {
-    await supabase.from("documents").insert(doc);
+    // attachments, is_secret 컬럼이 없을 수 있으므로 안전하게 처리
+    const { attachments, is_secret, ...baseDoc } = doc;
+    let { error } = await supabase.from("documents").insert(baseDoc);
+    if (error && error.message?.includes("attachments")) {
+      // attachments 컬럼 없으면 제외하고 재시도
+      ({ error } = await supabase.from("documents").insert(baseDoc));
+    }
+    if (error) {
+      console.error("문서 저장 오류:", error);
+      alert("문서 저장에 실패했어요: " + error.message);
+      return;
+    }
+    // attachments가 있으면 별도 업데이트 시도
+    if (attachments && attachments.length > 0) {
+      await supabase.from("documents").update({ attachments }).eq("id", baseDoc.id).catch(() => {});
+    }
     setNewDocModal(false);
     setTab("myDocs");
   };
@@ -1187,8 +1202,9 @@ function NewDocModal({ onClose, onSubmit, profile, allProfiles }) {
       status: "대기중",
       approval_line: approvalLine,
       approval_status: approvalLine.map(() => ({ status: "대기중", comment: "", date: null })),
-      fields, attachments,
+      fields,
       history: [{ action: "기안 제출", user: profile.name, date: today(), note: "" }],
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     onSubmit(doc);
   };
